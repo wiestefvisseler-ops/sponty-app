@@ -3,274 +3,462 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Sponty — live demo</title>
+<title>Sponty</title>
 <style>
   :root {
-    --bg: #13111c; --bg-warm: #221726; --card: #1e1b2b; --line: #2d2a42;
-    --text: #f3f0f9; --muted: #9a95ad; --indigo: #7d75c4; --amber: #ffbc5c;
-    --amber-soft: #ffd79a; --rose: #ff9e7a; --blue: #9fb7ff;
+    --bg: #13111c; --card: #1e1b2b; --line: #2d2a42;
+    --text: #f3f0f9; --muted: #9a95ad;
+    --indigo: #7d75c4; --amber: #ffbc5c; --amber-soft: #ffd79a;
+    --rose: #ff9e7a; --blue: #9fb7ff; --green: #7ed9a8;
   }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    transition: background .6s ease; padding: 26px 16px 48px;
+    background: var(--bg); color: var(--text);
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
+    min-height: 100dvh; display: flex; flex-direction: column;
   }
-  body.is-on { background: var(--bg-warm); }
-  .wrap { max-width: 920px; margin: 0 auto; }
-  .brand { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; font-size: 18px; letter-spacing: -.02em; margin-bottom: 6px; }
-  .sub { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 24px; }
-  .grid { display: grid; grid-template-columns: 1fr; gap: 22px; }
-  @media (min-width: 760px) { .grid { grid-template-columns: 360px 1fr; align-items: start; } }
 
-  /* phone */
-  .phone { background: var(--card); border: 1px solid var(--line); border-radius: 26px; padding: 18px; transition: all .6s ease; }
-  .phone.is-on { background: #2b1f2c; border-color: #43332f; box-shadow: 0 0 60px -16px rgba(255,188,92,.4); }
-  .acting { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
-  .chip { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 999px; padding: 6px 11px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
-  .chip.active { border-color: var(--indigo); color: var(--text); background: rgba(125,117,196,.14); }
+  .screen { display: none; flex-direction: column; flex: 1; padding: 28px 20px 48px; max-width: 480px; width: 100%; margin: 0 auto; }
+  .screen.active { display: flex; }
+
+  h1 { font-size: 28px; font-weight: 800; letter-spacing: -.03em; }
+  h2 { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+  .sub { color: var(--muted); font-size: 14px; line-height: 1.5; margin-top: 6px; }
+
+  input, select {
+    width: 100%; background: var(--card); color: var(--text);
+    border: 1.5px solid var(--line); border-radius: 14px;
+    padding: 14px 16px; font-size: 16px; font-family: inherit;
+    outline: none; transition: border-color .2s;
+  }
+  input:focus, select:focus { border-color: var(--indigo); }
+  input::placeholder { color: var(--muted); }
+
+  .btn {
+    width: 100%; padding: 15px; border-radius: 14px; border: none;
+    font-family: inherit; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: opacity .15s, transform .1s;
+  }
+  .btn:active { transform: scale(.98); opacity: .85; }
+  .btn-primary { background: var(--indigo); color: #fff; }
+  .btn-ghost { background: transparent; border: 1.5px solid var(--line); color: var(--muted); }
+
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+
+  .brand { font-size: 32px; font-weight: 900; letter-spacing: -.04em; text-align: center; margin-bottom: 4px; }
+  .brand span { color: var(--amber); }
+  .tagline { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 40px; }
+
+  .btn-big-wrap { display: flex; justify-content: center; margin: 28px 0 20px; }
   .btn-big {
-    width: 150px; height: 150px; border-radius: 50%; border: none; cursor: pointer; display: block; margin: 4px auto 0;
-    font-family: inherit; font-weight: 700; font-size: 14px; line-height: 1.25; color: var(--text);
+    width: 170px; height: 170px; border-radius: 50%; border: none;
+    cursor: pointer; font-family: inherit; font-weight: 700; font-size: 15px;
+    line-height: 1.4; color: var(--text); transition: all .4s ease;
     background: radial-gradient(circle at 50% 40%, #262339, #1c1a2b);
-    box-shadow: 0 14px 30px -16px rgba(0,0,0,.9); transition: all .5s ease;
+    box-shadow: 0 14px 40px -16px rgba(0,0,0,.9);
+    white-space: pre-line;
   }
-  .btn-big.down { background: radial-gradient(circle at 50% 40%, #3a3556, #2a2742); color: var(--indigo); box-shadow: inset 0 2px 14px rgba(0,0,0,.4); }
+  .btn-big.pending { background: radial-gradient(circle at 50% 40%, #2e2b50, #222040); color: var(--indigo); box-shadow: inset 0 2px 14px rgba(0,0,0,.4); }
   .btn-big.on { background: radial-gradient(circle at 50% 38%, var(--amber-soft), var(--amber)); color: #181522; box-shadow: 0 0 60px 4px rgba(255,188,92,.5); }
-  .btn-big:active { transform: scale(.97); }
-  .controls { margin-top: 16px; }
-  .controls.hidden { display: none; }
-  .lbl { font-size: 12px; color: var(--muted); text-align: center; margin: 0 0 7px; }
-  select, .tog { font-family: inherit; }
-  select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 9px; font-size: 13px; }
-  .tog { margin-top: 12px; width: 100%; display: flex; align-items: center; gap: 10px; background: transparent; border: 1px solid var(--line); border-radius: 13px; padding: 10px 12px; cursor: pointer; text-align: left; color: var(--text); }
+  .btn-big.heads_up { background: radial-gradient(circle at 50% 38%, #9fb7ff, #7090e0); color: #101a2e; box-shadow: 0 0 40px 4px rgba(159,183,255,.4); }
+  .btn-big:active { transform: scale(.96); }
+
+  .status-card { border-radius: 16px; padding: 16px; border: 1px solid var(--line); background: #1a1729; }
+  .status-card.on { background: #2c2012; border-color: #4a3618; }
+  .status-card.heads_up { background: #161d30; border-color: #27314e; }
+  .status-card h3 { font-size: 15px; margin-bottom: 6px; }
+  .status-card p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .participants { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
+  .participant { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 11px; color: #181522; flex-shrink: 0; }
+
+  .group-item {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 14px 16px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: border-color .2s;
+  }
+  .group-item:active { border-color: var(--indigo); }
+  .group-name { font-weight: 600; font-size: 15px; }
+  .group-members { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+  .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+  .topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+  .back { background: transparent; border: none; color: var(--muted); font-size: 22px; cursor: pointer; padding: 0; line-height: 1; }
+  .topbar-title { font-weight: 700; font-size: 17px; flex: 1; }
+
+  .options-row { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+  .tog { display: flex; align-items: center; gap: 10px; background: transparent; border: 1px solid var(--line); border-radius: 13px; padding: 12px; cursor: pointer; text-align: left; color: var(--text); font-family: inherit; width: 100%; }
   .tog.on { border-color: var(--rose); background: rgba(255,158,122,.1); }
-  .box { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #494563; flex-shrink: 0; display: grid; place-items: center; color: #181522; font-size: 12px; font-weight: 800; }
-  .tog.on .box { background: var(--rose); border-color: var(--rose); }
-  .tog small { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+  .tog-box { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #494563; display: grid; place-items: center; color: #181522; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+  .tog.on .tog-box { background: var(--rose); border-color: var(--rose); }
+  .tog small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
 
-  .status { margin-top: 16px; border-radius: 16px; padding: 14px; border: 1px solid var(--line); background: #1a1729; transition: all .5s ease; }
-  .status.on { background: #2c2012; border-color: #4a3618; }
-  .status.heads_up { background: #161d30; border-color: #27314e; }
-  .status h3 { margin: 0 0 6px; font-size: 14.5px; }
-  .status p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
-  .person { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
-  .av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 12px; color: #181522; flex-shrink: 0; }
-  .person .t { margin-left: auto; font-size: 12px; color: var(--muted); }
-  .join { margin-top: 12px; width: 100%; background: var(--blue); color: #101a2e; border: none; border-radius: 12px; padding: 10px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  .invite-code { text-align: center; }
+  .code-box { font-size: 13px; font-weight: 700; letter-spacing: .05em; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin: 10px 0; cursor: pointer; word-break: break-all; }
+  .code-hint { font-size: 12px; color: var(--muted); }
 
-  /* god view */
-  .panel h2 { font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
-  .panel .hint { font-size: 12.5px; color: #6f6a86; margin: 0 0 14px; line-height: 1.5; }
-  .scen { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-  .row { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 11px 12px; margin-bottom: 9px; }
-  .row.in { border-color: #39354f; }
-  .row .top { display: flex; align-items: center; gap: 11px; }
-  .row .name { font-weight: 600; font-size: 14px; flex: 1; }
-  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-  .switch { width: 48px; height: 27px; border-radius: 999px; border: none; cursor: pointer; padding: 3px; background: #312e47; flex-shrink: 0; display: flex; }
-  .switch.on { background: var(--amber); justify-content: flex-end; }
-  .knob { width: 21px; height: 21px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
-  .row .opts { display: flex; align-items: center; gap: 9px; margin-top: 10px; padding-left: 39px; flex-wrap: wrap; }
-  .row select { width: auto; padding: 5px 8px; font-size: 12px; }
-  .mini { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 9px; padding: 5px 8px; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; background: transparent; font-family: inherit; }
-  .mini.on { border-color: var(--rose); color: var(--rose); background: rgba(255,158,122,.12); }
-  .mini .box { width: 14px; height: 14px; border-radius: 4px; }
-  .foot { color: #56526b; font-size: 11.5px; text-align: center; margin-top: 18px; line-height: 1.5; }
-  .err { background: #2a1620; border: 1px solid #5a2740; color: #ffb3c8; padding: 12px; border-radius: 12px; font-size: 13px; }
+  .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: #1e1b2b; border: 1px solid var(--line); color: var(--text); padding: 12px 20px; border-radius: 12px; font-size: 13px; white-space: nowrap; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 99; }
+  .toast.show { opacity: 1; }
+
+  .loader { text-align: center; color: var(--muted); font-size: 14px; padding: 40px 0; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="brand">🌙 sponty <span style="font-weight:500;color:var(--muted);font-size:13px;">live demo</span></div>
-  <div class="sub">Talking to the real backend. The phone shows one person's privacy-safe view; the panel lets you play everyone.</div>
-  <div id="app"><div class="err" style="display:none"></div></div>
+
+<!-- welcome -->
+<div id="screen-welcome" class="screen active">
+  <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+    <div class="brand">Sponty<span>.</span></div>
+    <div class="tagline">Hang with friends, no awkward planning</div>
+    <div class="stack">
+      <button class="btn btn-primary" onclick="show('screen-signup')">Get started</button>
+      <button class="btn btn-ghost" onclick="show('screen-login')">I already have an account</button>
+    </div>
+  </div>
 </div>
 
+<!-- sign up -->
+<div id="screen-signup" class="screen">
+  <div class="topbar">
+    <button class="back" onclick="show('screen-welcome')">←</button>
+    <span class="topbar-title">Create account</span>
+  </div>
+  <div class="stack" style="flex:1;">
+    <div>
+      <h2>What's your name?</h2>
+      <p class="sub" style="margin-bottom:20px;">This is what your friends will see.</p>
+      <input id="signup-name" type="text" placeholder="Your name" autocomplete="given-name" />
+    </div>
+    <button class="btn btn-primary" onclick="doSignup()">Continue</button>
+  </div>
+</div>
+
+<!-- log in -->
+<div id="screen-login" class="screen">
+  <div class="topbar">
+    <button class="back" onclick="show('screen-welcome')">←</button>
+    <span class="topbar-title">Welcome back</span>
+  </div>
+  <div class="stack" style="flex:1;">
+    <div>
+      <h2>Enter your account code</h2>
+      <p class="sub" style="margin-bottom:20px;">Paste the code you saved when you signed up.</p>
+      <input id="login-code" type="text" placeholder="Paste your code here" />
+    </div>
+    <button class="btn btn-primary" onclick="doLogin()">Log in</button>
+  </div>
+</div>
+
+<!-- groups list -->
+<div id="screen-groups" class="screen">
+  <div style="margin-bottom:24px;">
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+      <h1 id="groups-greeting">Hey 👋</h1>
+      <button class="btn-ghost btn" style="width:auto; padding:8px 14px; font-size:13px;" onclick="showAccountCode()">My code</button>
+    </div>
+    <p class="sub">Pick a group to hang with.</p>
+  </div>
+  <div id="groups-list" class="stack"></div>
+  <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px;">
+    <div class="or">or</div>
+    <button class="btn btn-primary" onclick="show('screen-create-group')">Create a group</button>
+    <button class="btn btn-ghost" onclick="show('screen-join-group')">Join with a code</button>
+  </div>
+</div>
+
+<!-- create group -->
+<div id="screen-create-group" class="screen">
+  <div class="topbar">
+    <button class="back" onclick="show('screen-groups')">←</button>
+    <span class="topbar-title">New group</span>
+  </div>
+  <div class="stack" style="flex:1;">
+    <div>
+      <h2>Name your group</h2>
+      <p class="sub" style="margin-bottom:20px;">e.g. "Close friends", "Flatmates", "Work gang"</p>
+      <input id="create-group-name" type="text" placeholder="Group name" />
+    </div>
+    <button class="btn btn-primary" onclick="doCreateGroup()">Create group</button>
+  </div>
+</div>
+
+<!-- join group -->
+<div id="screen-join-group" class="screen">
+  <div class="topbar">
+    <button class="back" onclick="show('screen-groups')">←</button>
+    <span class="topbar-title">Join a group</span>
+  </div>
+  <div class="stack" style="flex:1;">
+    <div>
+      <h2>Enter the group code</h2>
+      <p class="sub" style="margin-bottom:20px;">Ask a friend to share it with you.</p>
+      <input id="join-code" type="text" placeholder="Paste group code" />
+    </div>
+    <button class="btn btn-primary" onclick="doJoinGroup()">Join</button>
+  </div>
+</div>
+
+<!-- group main screen -->
+<div id="screen-group" class="screen">
+  <div class="topbar">
+    <button class="back" onclick="leaveGroup()">←</button>
+    <span class="topbar-title" id="group-title"></span>
+    <button class="btn-ghost btn" style="width:auto; padding:7px 12px; font-size:12px;" onclick="showGroupCode()">Invite</button>
+  </div>
+
+  <div class="btn-big-wrap">
+    <button class="btn-big" id="main-btn" onclick="toggleSignal()">I'm down&#10;to hang</button>
+  </div>
+
+  <div id="status-area"></div>
+
+  <div class="options-row" id="options-area" style="margin-top:20px;">
+    <select id="from-time">
+      <option value="">Available any time</option>
+      <option value="12:00">From noon</option>
+      <option value="14:00">From 2 pm</option>
+      <option value="16:00">From 4 pm</option>
+      <option value="18:00">From 6 pm</option>
+      <option value="20:00">From 8 pm</option>
+    </select>
+    <button class="tog" id="tog-1on1" onclick="toggle1on1()">
+      <span class="tog-box" id="tog-1on1-box"></span>
+      <span>1-on-1 is fine<small>Match even if it's just one other person</small></span>
+    </button>
+  </div>
+</div>
+
+<!-- account code -->
+<div id="screen-account" class="screen">
+  <div class="topbar">
+    <button class="back" onclick="show('screen-groups')">←</button>
+    <span class="topbar-title">Your account code</span>
+  </div>
+  <div style="flex:1; display:flex; flex-direction:column; gap:16px;">
+    <p class="sub">Save this — it's the only way to log back in on a new device.</p>
+    <div class="invite-code">
+      <div class="code-box" id="account-code-display" onclick="copyAccountCode()"></div>
+      <p class="code-hint">Tap to copy</p>
+    </div>
+    <button class="btn btn-primary" onclick="copyAccountCode()">Copy code</button>
+  </div>
+</div>
+
+<!-- group invite -->
+<div id="screen-invite" class="screen">
+  <div class="topbar">
+    <button class="back" onclick="show('screen-group')">←</button>
+    <span class="topbar-title">Invite friends</span>
+  </div>
+  <div style="flex:1; display:flex; flex-direction:column; gap:16px;">
+    <p class="sub">Share this code with friends so they can join the group.</p>
+    <div class="invite-code">
+      <div class="code-box" id="group-code-display" onclick="copyGroupCode()"></div>
+      <p class="code-hint">Tap to copy</p>
+    </div>
+    <button class="btn btn-primary" onclick="copyGroupCode()">Copy code</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
 <script>
-const TIMES = ["18:00","19:00","20:00","21:00","later"];
-const COLORS = { You:"#ffbc5c", Maya:"#ff9e7a", Jonas:"#7fb3ff", Sofia:"#c49bff", Leo:"#6fe0c0", Robin:"#ffd56b" };
-const BADGES = {
-  on:        { t:"it's on",            c:"#ffbc5c", bg:"#3a2a14" },
-  heads_up:  { t:"heads-up to join",   c:"#9fb7ff", bg:"#1c2438" },
-  pending:   { t:"hidden, waiting",    c:"#7d75c4", bg:"#211d36" },
-  idle:      { t:"nothing — no idea",  c:"#5d5872", bg:"#1a1828" },
-};
+'use strict';
 
-const state = { users: [], groupId: null, acting: null, statuses: {}, debug: null, ready: false };
+let me = null;
+let currentGroup = null;
+let mySignalId = null;
+let pollTimer = null;
+let oneOnOneOk = false;
 
-async function api(path, method = "GET", body) {
-  const res = await fetch(path, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
+const COLORS = ['#7d75c4','#ffbc5c','#ff9e7a','#9fb7ff','#7ed9a8'];
+
+function save() { localStorage.setItem('sponty_user', JSON.stringify(me)); }
+function load() { try { me = JSON.parse(localStorage.getItem('sponty_user')); } catch { me = null; } }
+
+load();
+if (me && me.id) loadGroups();
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(path, opts);
+  return r.json();
+}
+
+async function doSignup() {
+  const name = document.getElementById('signup-name').value.trim();
+  if (!name) return toast('Please enter your name');
+  const u = await api('POST', '/api/users', { name });
+  if (!u.id) return toast('Something went wrong');
+  me = { id: u.id, name: u.name };
+  save();
+  loadGroups();
+}
+
+async function doLogin() {
+  const code = document.getElementById('login-code').value.trim();
+  if (!code) return toast('Paste your code first');
+  const groups = await api('GET', `/api/users/${code}/groups`);
+  if (!Array.isArray(groups)) return toast('Code not recognised');
+  me = { id: code, name: 'You' };
+  save();
+  loadGroups();
+}
+
+async function loadGroups() {
+  show('screen-groups');
+  document.getElementById('groups-greeting').textContent = `Hey ${me.name} 👋`;
+  const list = document.getElementById('groups-list');
+  list.innerHTML = '<div class="loader">Loading…</div>';
+  const groups = await api('GET', `/api/users/${me.id}/groups`);
+  if (!Array.isArray(groups) || groups.length === 0) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:14px;text-align:center;padding:20px 0;">No groups yet — create one or join with a code.</p>';
+    return;
+  }
+  list.innerHTML = '';
+  groups.forEach((g, i) => {
+    const div = document.createElement('div');
+    div.className = 'group-item';
+    div.innerHTML = `<div style="font-size:22px;background:${COLORS[i%COLORS.length]}22;border-radius:10px;padding:4px 8px;">🛋</div><div><div class="group-name">${esc(g.name)}</div><div class="group-members">${g.memberCount} member${g.memberCount!==1?'s':''}</div></div><div style="margin-left:auto;color:var(--muted);font-size:18px;">›</div>`;
+    div.onclick = () => openGroup(g);
+    list.appendChild(div);
   });
-  if (!res.ok && res.status >= 500) throw new Error("server error " + res.status);
-  return res.json();
 }
 
-async function seed() {
-  const names = Object.keys(COLORS);
-  const users = [];
-  for (const name of names) users.push({ ...(await api("/api/users", "POST", { name, pushToken: "demo-" + name })), color: COLORS[name] });
-  const group = await api("/api/groups", "POST", { name: "the squad", memberIds: users.map(u => u.id) });
-  state.users = users;
-  state.groupId = group.id;
-  state.acting = users[0].id;
-  state.ready = true;
+async function doCreateGroup() {
+  const name = document.getElementById('create-group-name').value.trim();
+  if (!name) return toast('Give your group a name');
+  const g = await api('POST', '/api/groups', { name, memberIds: [me.id] });
+  if (!g.id) return toast('Something went wrong');
+  openGroup(g);
 }
 
-function sigByUser(userId) {
-  if (!state.debug) return null;
-  return state.debug.activeSignals.find(s => s.userId === userId) || null;
+async function doJoinGroup() {
+  const code = document.getElementById('join-code').value.trim();
+  if (!code) return toast('Paste a group code first');
+  const g = await api('GET', `/api/groups/${code}`);
+  if (!g || !g.id) return toast('Group not found — check the code');
+  await api('POST', `/api/groups/${code}/members`, { userId: me.id });
+  openGroup(g);
 }
 
-async function press(userId, patch = {}) {
-  const sig = sigByUser(userId) || {};
-  const fromTime = patch.fromTime ?? sig.fromTime ?? "20:00";
-  const oneOnOneOk = patch.oneOnOneOk ?? sig.oneOnOneOk ?? false;
-  await api(`/api/groups/${state.groupId}/signals`, "POST", { userId, fromTime, oneOnOneOk });
-  await refresh();
-}
-async function unpress(userId) {
-  const fresh = await api(`/api/groups/${state.groupId}/status?userId=${userId}`);
-  if (fresh.signalId) await api(`/api/signals/${fresh.signalId}?userId=${userId}`, "DELETE");
-  await refresh();
+function openGroup(g) {
+  currentGroup = g;
+  mySignalId = null;
+  oneOnOneOk = false;
+  document.getElementById('group-title').textContent = g.name;
+  document.getElementById('tog-1on1-box').textContent = '';
+  document.getElementById('tog-1on1').classList.remove('on');
+  show('screen-group');
+  pollStatus();
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(pollStatus, 5000);
 }
 
-async function refresh() {
-  if (!state.ready) return;
-  state.debug = await api(`/api/debug/groups/${state.groupId}`);
-  for (const u of state.users) {
-    state.statuses[u.id] = await api(`/api/groups/${state.groupId}/status?userId=${u.id}`);
+function leaveGroup() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+  loadGroups();
+}
+
+async function toggleSignal() {
+  if (mySignalId) {
+    await api('DELETE', `/api/signals/${mySignalId}?userId=${me.id}`);
+    mySignalId = null;
+    pollStatus();
+  } else {
+    const fromTime = document.getElementById('from-time').value || null;
+    const res = await api('POST', `/api/groups/${currentGroup.id}/signals`, { userId: me.id, fromTime, oneOnOneOk });
+    if (res.signalId) mySignalId = res.signalId;
+    renderStatus(res);
   }
-  render();
 }
 
-function scenario(which) {
-  const find = n => state.users.find(u => u.name === n).id;
-  const run = async () => {
-    // clear everyone first
-    for (const u of state.users) {
-      // cancel via fresh status to get a valid id
-      const fresh = await api(`/api/groups/${state.groupId}/status?userId=${u.id}`);
-      if (fresh.signalId) await api(`/api/signals/${fresh.signalId}?userId=${u.id}`, "DELETE");
-    }
-    if (which === "group") { await press(find("You")); await press(find("Jonas")); await press(find("Sofia")); }
-    if (which === "pair") { await press(find("You"), { oneOnOneOk: true }); await press(find("Maya"), { oneOnOneOk: true }); }
-    if (which === "almost") { await press(find("You")); await press(find("Leo")); }
-    await refresh();
-  };
-  run();
+function toggle1on1() {
+  oneOnOneOk = !oneOnOneOk;
+  document.getElementById('tog-1on1').classList.toggle('on', oneOnOneOk);
+  document.getElementById('tog-1on1-box').textContent = oneOnOneOk ? '✓' : '';
 }
 
-function av(name) { const c = COLORS[name] || "#888"; return `<span class="av" style="background:${c}">${name[0]}</span>`; }
+async function pollStatus() {
+  if (!currentGroup || !me) return;
+  const s = await api('GET', `/api/groups/${currentGroup.id}/status?userId=${me.id}`);
+  if (s.signalId) mySignalId = s.signalId;
+  renderStatus(s);
+}
 
-function renderPhone() {
-  const u = state.users.find(x => x.id === state.acting);
-  const st = state.statuses[state.acting] || { status: "idle" };
-  const sig = sigByUser(state.acting);
-  const down = !!sig;
-  const isOn = st.status === "on";
+function renderStatus(s) {
+  const btn = document.getElementById('main-btn');
+  const area = document.getElementById('status-area');
+  const opts = document.getElementById('options-area');
 
-  const acting = state.users.map(x =>
-    `<button class="chip ${x.id === state.acting ? "active" : ""}" onclick="state.acting='${x.id}';render()">${x.name}</button>`
-  ).join("");
+  btn.className = 'btn-big';
+  area.innerHTML = '';
 
-  let bigLabel = down ? "you're in,<br>quietly" : "I'm down<br>to chill";
-  if (isOn) bigLabel = "✨<br>it's on";
-
-  const controls = down ? `
-    <div class="controls">
-      <p class="lbl">free from</p>
-      <select onchange="press('${state.acting}',{fromTime:this.value})">
-        ${TIMES.map(t => `<option ${sig && sig.fromTime === t ? "selected" : ""} value="${t}">${t === "later" ? "later tonight" : t}</option>`).join("")}
-      </select>
-      <button class="tog ${sig && sig.oneOnOneOk ? "on" : ""}" onclick="press('${state.acting}',{oneOnOneOk:${!(sig && sig.oneOnOneOk)}})">
-        <span class="box">${sig && sig.oneOnOneOk ? "✓" : ""}</span>
-        <span>1-on-1's fine too<small>lets it trigger with just 2 of you</small></span>
-      </button>
-    </div>` : "";
-
-  let status = "";
-  if (st.status === "idle") {
-    status = `<div class="status"><h3>all quiet</h3><p>Tap the moon. Nothing happens — and no one sees a thing — unless your people are quietly in too.</p></div>`;
-  } else if (st.status === "pending") {
-    status = `<div class="status"><h3>you're in — and invisible</h3><p>You'll only hear back if the lights come on. If they don't, no one ever knows you were down.</p></div>`;
-  } else if (st.status === "on") {
-    const ppl = st.participants.map(p => `<div class="person">${av(p.name === u.name ? "You" : p.name)}<span>${p.userId === state.acting ? "You" : p.name}</span><span class="t">${p.fromTime ? "from " + p.fromTime : ""}</span></div>`).join("");
-    status = `<div class="status on"><h3 style="color:var(--amber-soft)">${st.mode === "pair" ? "just you two — and that's enough" : "it's on ✨"}</h3>${ppl}<p style="margin-top:10px">The rest of the squad got a heads-up to join.</p></div>`;
-  } else if (st.status === "heads_up") {
-    const ppl = st.participants.map(p => `<div class="person">${av(p.name)}<span>${p.name}</span><span class="t">${p.fromTime ? "from " + p.fromTime : ""}</span></div>`).join("");
-    status = `<div class="status heads_up"><h3 style="color:var(--blue)">some of your people are chilling</h3><p>${st.earliestFrom ? "From " + st.earliestFrom + ". " : ""}Slide in if you feel like it.</p>${ppl}<button class="join" onclick="press('${state.acting}')">I'm in</button></div>`;
+  if (s.status === 'idle') {
+    btn.textContent = "I'm down\nto hang";
+    opts.style.display = 'flex';
+  } else if (s.status === 'pending') {
+    btn.classList.add('pending');
+    btn.textContent = 'Waiting for\nfriends…';
+    opts.style.display = 'none';
+    area.innerHTML = `<div class="status-card"><h3>You're quietly in 🤫</h3><p>Nobody knows yet. You'll be notified when enough friends are also down.</p></div>`;
+  } else if (s.status === 'on') {
+    btn.classList.add('on');
+    btn.textContent = "It's on! ✨";
+    opts.style.display = 'none';
+    const others = (s.participants||[]).filter(p => p.userId !== me.id);
+    const names = others.map(p => p.name).join(', ');
+    const time = s.earliestFrom ? ` · from ${s.earliestFrom}` : '';
+    area.innerHTML = `<div class="status-card on"><h3>${s.mode === 'pair' ? "Just you two 🎉" : "Squad's hanging ✨"}</h3><p>${esc(names) || 'Friends'} are also down${time}.</p>${avatarList(s.participants)}</div><div style="margin-top:12px;"><button class="btn btn-ghost" onclick="toggleSignal()">Actually, cancel</button></div>`;
+  } else if (s.status === 'heads_up') {
+    btn.classList.add('heads_up');
+    btn.textContent = 'Jump in?';
+    opts.style.display = 'flex';
+    const time = s.earliestFrom ? ` from ${s.earliestFrom}` : '';
+    area.innerHTML = `<div class="status-card heads_up"><h3>Some friends are hanging 👀</h3><p>Tap the button to join them${time}.</p></div>`;
   }
-
-  return `
-    <div class="phone ${isOn ? "is-on" : ""}">
-      <div class="acting">${acting}</div>
-      <button class="btn-big ${isOn ? "on" : down ? "down" : ""}" onclick="${down ? `unpress('${state.acting}')` : `press('${state.acting}')`}">${bigLabel}</button>
-      ${controls}
-      ${status}
-    </div>`;
 }
 
-function renderPanel() {
-  const rows = state.users.map(u => {
-    const sig = sigByUser(u.id);
-    const down = !!sig;
-    const st = state.statuses[u.id] || { status: "idle" };
-    const b = BADGES[st.status] || BADGES.idle;
-    const opts = down ? `
-      <div class="opts">
-        <select onchange="press('${u.id}',{fromTime:this.value})">
-          ${TIMES.map(t => `<option ${sig.fromTime === t ? "selected" : ""} value="${t}">from ${t === "later" ? "later" : t}</option>`).join("")}
-        </select>
-        <button class="mini ${sig.oneOnOneOk ? "on" : ""}" onclick="press('${u.id}',{oneOnOneOk:${!sig.oneOnOneOk}})">
-          <span class="box">${sig.oneOnOneOk ? "✓" : ""}</span>1-on-1 ok
-        </button>
-      </div>` : "";
-    return `
-      <div class="row ${down ? "in" : ""}">
-        <div class="top">
-          ${av(u.name)}
-          <span class="name">${u.name}${u.id === state.acting ? ' <span style="color:#6f6a86;font-weight:500;font-size:11px">· shown on phone</span>' : ""}</span>
-          <span class="badge" style="color:${b.c};background:${b.bg}">${b.t}</span>
-          <button class="switch ${down ? "on" : ""}" onclick="${down ? `unpress('${u.id}')` : `press('${u.id}')`}"><span class="knob"></span></button>
-        </div>
-        ${opts}
-      </div>`;
-  }).join("");
-
-  return `
-    <div class="panel">
-      <h2>Behind the scenes</h2>
-      <p class="hint">You'd never see this in the real app. Flip your friends on and watch the lights come on. Each badge is exactly what lands on that person's phone.</p>
-      <div class="scen">
-        <button class="chip" onclick="scenario('group')">3 friends in</button>
-        <button class="chip" onclick="scenario('pair')">2 + 1-on-1</button>
-        <button class="chip" onclick="scenario('almost')">almost (stays hidden)</button>
-        <button class="chip" onclick="scenario('clear')">clear</button>
-      </div>
-      ${rows}
-      <p class="foot">In-memory demo · restart the server to wipe state. Pending signals never leak — only the /debug route (used here) can see them.</p>
-    </div>`;
+function avatarList(participants) {
+  if (!participants || !participants.length) return '';
+  const items = participants.map((p, i) =>
+    `<div class="participant"><div class="av" style="background:${COLORS[i%COLORS.length]}">${esc((p.name||'?')[0])}</div>${esc(p.name)}${p.fromTime?`<span style="margin-left:auto;color:var(--muted);font-size:12px;">from ${p.fromTime}</span>`:''}</div>`
+  ).join('');
+  return `<div class="participants">${items}</div>`;
 }
 
-function render() {
-  const anyOn = Object.values(state.statuses).some(s => s.status === "on");
-  document.body.classList.toggle("is-on", anyOn);
-  document.getElementById("app").innerHTML = `<div class="grid">${renderPhone()}${renderPanel()}</div>`;
+function showAccountCode() {
+  document.getElementById('account-code-display').textContent = me.id;
+  show('screen-account');
+}
+function copyAccountCode() {
+  navigator.clipboard.writeText(me.id).then(() => toast('Copied!')).catch(() => { toast('Copy failed — tap the code to select it'); });
 }
 
-(async function init() {
-  try {
-    await seed();
-    await refresh();
-    setInterval(refresh, 2500); // poll like a real client would
-  } catch (e) {
-    document.getElementById("app").innerHTML = `<div class="err">Couldn't reach the backend. Make sure it's running (<code>npm start</code>) and reload.<br><br>${e.message}</div>`;
-  }
-})();
+function showGroupCode() {
+  document.getElementById('group-code-display').textContent = currentGroup.id;
+  show('screen-invite');
+}
+function copyGroupCode() {
+  navigator.clipboard.writeText(currentGroup.id).then(() => toast('Copied!')).catch(() => { toast('Copy failed — tap the code to select it'); });
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 </script>
 </body>
 </html>
