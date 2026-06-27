@@ -170,7 +170,7 @@
   <div style="margin-bottom:24px;">
     <div style="display:flex; align-items:center; justify-content:space-between;">
       <h1 id="groups-greeting">Hey 👋</h1>
-      <button class="btn-ghost btn" style="width:auto; padding:8px 14px; font-size:13px;" onclick="showAccountCode()">My code</button>
+      <button class="btn-ghost btn" style="width:auto; padding:8px 14px; font-size:13px;" onclick="showAccountCode()">My account</button>
     </div>
     <p class="sub">Pick a group to hang with.</p>
   </div>
@@ -393,7 +393,7 @@ async function doCreateGroup() {
   const name = document.getElementById('create-group-name').value.trim();
   if (!name) return toast('Give your group a name');
   const minPeople = Number(document.getElementById('create-group-min').value);
-  const g = await api('POST', '/api/groups', { name, memberIds: [me.id], minPeople });
+  const g = await api('POST', '/api/groups', { name, memberIds: [me.id], minPeople, ownerId: me.id });
   if (!g.id) return toast('Something went wrong');
   openGroup(g);
 }
@@ -429,15 +429,28 @@ function openGroup(g) {
 async function loadMembers() {
   const g = await api('GET', `/api/groups/${currentGroup.id}`);
   if (!g || !g.members) return;
+  currentGroup.ownerId = g.ownerId;
+  const isOwner = g.ownerId === me.id;
   const row = document.getElementById('members-row');
   row.innerHTML = g.members.map((m, i) => {
     const isMe = m.id === me.id;
     const letter = esc((m.name || '?')[0].toUpperCase());
+    const removeBtn = isOwner && !isMe
+      ? `<button onclick="removeMember('${m.id}')" style="background:transparent;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:0 2px;line-height:1;" title="Remove">✕</button>`
+      : '';
     return `<div style="display:flex;align-items:center;gap:5px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 10px 5px 6px;">
       <div class="av" style="width:22px;height:22px;font-size:10px;background:${COLORS[i%COLORS.length]}">${letter}</div>
       <span style="font-size:13px;font-weight:600;">${esc(m.name)}${isMe ? ' <span style="color:var(--muted);font-weight:400;">(you)</span>' : ''}</span>
+      ${removeBtn}
     </div>`;
   }).join('');
+}
+
+async function removeMember(userId) {
+  if (!confirm('Remove this member from the group?')) return;
+  const res = await api('DELETE', `/api/groups/${currentGroup.id}/members/${userId}?requesterId=${me.id}`);
+  if (res.ok) loadMembers();
+  else toast(res.error || 'Could not remove member');
 }
 
 function leaveGroup() {
