@@ -58,7 +58,11 @@ const routes = [
 
   ['POST', /^\/api\/users$/, async (req, res) => {
     const b = await readBody(req);
-    sendJson(res, 201, store.createUser({ name: b.name }));
+    try {
+      sendJson(res, 201, store.createUser({ name: b.name }));
+    } catch (e) {
+      sendJson(res, 400, { error: e.message });
+    }
   }],
 
   ['POST', /^\/api\/users\/(?<id>[^/]+)\/push-subscription$/, async (req, res, p) => {
@@ -75,8 +79,8 @@ const routes = [
 
   ['POST', /^\/api\/groups$/, async (req, res) => {
     const b = await readBody(req);
-    const g = store.createGroup({ name: b.name, memberIds: b.memberIds || [] });
-    sendJson(res, 201, { id: g.id, name: g.name, memberIds: [...g.memberIds] });
+    const g = store.createGroup({ name: b.name, memberIds: b.memberIds || [], minPeople: b.minPeople });
+    sendJson(res, 201, { id: g.id, name: g.name, minPeople: g.minPeople, memberIds: [...g.memberIds] });
   }],
 
   ['GET', /^\/api\/groups\/(?<id>[^/]+)$/, async (req, res, p) => {
@@ -124,7 +128,23 @@ const routes = [
   ['POST', /^\/api\/groups\/(?<id>[^/]+)\/chat$/, async (req, res, p) => {
     const b = await readBody(req);
     const msg = store.addMessage(p.id, b.userId, b.text);
-    msg ? sendJson(res, 201, msg) : sendJson(res, 400, { error: 'user not found' });
+    if (!msg) return sendJson(res, 400, { error: 'user not found' });
+    sendJson(res, 201, msg);
+    // notify only people who are currently down in this group (active signal)
+    const group = store.getGroup(p.id);
+    const activeIds = store.chatAudienceIds(p.id);
+    if (group) {
+      for (const memberId of activeIds) {
+        if (memberId === b.userId) continue;
+        const member = store.getUser(memberId);
+        if (member) {
+          await notifier.send(member, {
+            title: `${msg.name} in ${group.name}`,
+            body: msg.text,
+          });
+        }
+      }
+    }
   }],
 
   // DEMO ONLY — full god-view of a group. Delete before shipping.

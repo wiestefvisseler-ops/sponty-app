@@ -13,7 +13,7 @@
  * ------------------------------------------------------------------ */
 
 const { randomUUID } = require('crypto');
-const { resolveSignals } = require('./engine');
+const { resolveSignals, DEFAULT_THRESHOLD } = require('./engine');
 
 function midnightTonight() {
   const d = new Date();
@@ -35,8 +35,9 @@ const messages = new Map(); // `${groupId}:${dateKey}` -> [{ id, userId, name, t
 const now = () => Date.now();
 
 /* ----------------------------- users ----------------------------- */
-function createUser({ name, pushToken = null }) {
-  const u = { id: randomUUID(), name: String(name || 'Friend'), pushToken };
+function createUser({ name }) {
+  if (!name || !String(name).trim()) throw new Error('name required');
+  const u = { id: randomUUID(), name: String(name).trim() };
   users.set(u.id, u);
   return u;
 }
@@ -49,8 +50,9 @@ function setPushSubscription(userId, subscription) {
 }
 
 /* ----------------------------- groups ---------------------------- */
-function createGroup({ name, memberIds = [] }) {
-  const g = { id: randomUUID(), name: String(name || 'Group'), memberIds: new Set(memberIds) };
+function createGroup({ name, memberIds = [], minPeople = DEFAULT_THRESHOLD }) {
+  const min = Math.max(3, Math.min(10, Number(minPeople) || DEFAULT_THRESHOLD));
+  const g = { id: randomUUID(), name: String(name || 'Group'), memberIds: new Set(memberIds), minPeople: min };
   groups.set(g.id, g);
   return g;
 }
@@ -106,7 +108,7 @@ function recompute(groupId) {
   if (!g) return { event: null, notifications: [] };
 
   const active = activeSignals(groupId);
-  const decision = resolveSignals(active.map((s) => ({ userId: s.userId, oneOnOneOk: s.oneOnOneOk })));
+  const decision = resolveSignals(active.map((s) => ({ userId: s.userId, oneOnOneOk: s.oneOnOneOk })), g.minPeople);
   const notifications = [];
 
   if (!decision.triggered) {
@@ -264,6 +266,18 @@ function debugGroupState(groupId) {
   };
 }
 
+/* ----------- users who should receive chat notifications ---------- */
+// Includes: people with active signals + all group members if a hang is live
+// (heads_up members can see the chat and should stay in the loop)
+function chatAudienceIds(groupId) {
+  const ids = new Set(activeSignals(groupId).map((s) => s.userId));
+  if (activeEvent(groupId)) {
+    const g = groups.get(groupId);
+    if (g) g.memberIds.forEach((id) => ids.add(id));
+  }
+  return ids;
+}
+
 /* ----------------------------- chat ----------------------------- */
 function getMessages(groupId) {
   const key = `${groupId}:${todayKey()}`;
@@ -284,5 +298,5 @@ module.exports = {
   createUser, getUser, setPushSubscription,
   createGroup, getGroup, addMember, listGroupsForUser,
   createSignal, cancelSignal, getUserStatus, debugGroupState,
-  getMessages, addMessage,
+  getMessages, addMessage, chatAudienceIds,
 };
