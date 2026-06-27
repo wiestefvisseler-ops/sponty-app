@@ -63,7 +63,9 @@ const routes = [
 
   ['POST', /^\/api\/users\/(?<id>[^/]+)\/push-subscription$/, async (req, res, p) => {
     const b = await readBody(req);
+    console.log(`  📲 push-subscription for user ${p.id}: ${b.subscription ? 'received' : 'MISSING'}`);
     const u = store.setPushSubscription(p.id, b.subscription);
+    console.log(`  📲 user found: ${u ? u.name : 'NO'}`);
     u ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'user not found' });
   }],
 
@@ -127,6 +129,8 @@ const server = http.createServer(async (req, res) => {
   const pathname = url.pathname;
 
   if (req.method === 'OPTIONS') return sendJson(res, 204, {});
+
+  console.log(`${req.method} ${pathname}`);
 
   const staticFiles = {
     '/':             ['client.html', 'text/html'],
