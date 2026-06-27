@@ -27,14 +27,16 @@ const PUBLIC_VAPID_KEY = vapidPublic;
 
 class WebPushNotifier {
   async send(user, { title, body }) {
+    console.log(`  🔔 push to ${user.name} — sub: ${user.pushSubscription ? 'yes' : 'NO'}`);
     if (!user.pushSubscription) return;
     try {
       await webpush.sendNotification(
         user.pushSubscription,
         JSON.stringify({ title, body })
       );
+      console.log(`  ✅ push sent to ${user.name}`);
     } catch (e) {
-      // Subscription expired or revoked — clear it
+      console.log(`  ❌ push failed for ${user.name}: ${e.statusCode} ${e.message}`);
       if (e.statusCode === 410 || e.statusCode === 404) {
         user.pushSubscription = null;
       }
