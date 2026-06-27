@@ -367,7 +367,15 @@ async function loadGroups() {
   const list = document.getElementById('groups-list');
   list.innerHTML = '<div class="loader">Loading…</div>';
   const groups = await api('GET', `/api/users/${me.id}/groups`);
-  if (!Array.isArray(groups) || groups.length === 0) {
+  if (!Array.isArray(groups)) {
+    // Server doesn't know this user anymore (e.g. after a redeploy) — force fresh signup
+    localStorage.removeItem('sponty_user');
+    me = null;
+    toast('Your session expired — please sign up again');
+    show('screen-welcome');
+    return;
+  }
+  if (groups.length === 0) {
     list.innerHTML = '<p style="color:var(--muted);font-size:14px;text-align:center;padding:20px 0;">No groups yet — create one or join with a code.</p>';
     return;
   }
