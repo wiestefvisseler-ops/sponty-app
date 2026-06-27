@@ -110,6 +110,13 @@
   .toast.show { opacity: 1; }
 
   .loader { text-align: center; color: var(--muted); font-size: 14px; padding: 40px 0; }
+
+  .msg { display: flex; flex-direction: column; gap: 2px; }
+  .msg-name { font-size: 11px; font-weight: 700; color: var(--muted); }
+  .msg-name.mine { color: var(--indigo); text-align: right; }
+  .msg-bubble { font-size: 14px; line-height: 1.4; background: #2a2740; border-radius: 12px; padding: 8px 12px; max-width: 85%; word-break: break-word; }
+  .msg.is-mine { align-items: flex-end; }
+  .msg.is-mine .msg-bubble { background: var(--indigo); color: #fff; }
 </style>
 </head>
 <body>
@@ -226,6 +233,15 @@
 
   <div id="status-area"></div>
 
+  <div id="chat-area" style="display:none; margin-top:20px; display:none; flex-direction:column; gap:0;">
+    <div style="font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; margin-bottom:10px;">Chat</div>
+    <div id="chat-messages" style="background:var(--card); border:1px solid var(--line); border-radius:16px 16px 0 0; padding:14px; min-height:120px; max-height:260px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
+    <div style="display:flex; gap:8px; background:var(--card); border:1px solid var(--line); border-top:none; border-radius:0 0 16px 16px; padding:10px;">
+      <input id="chat-input" type="text" placeholder="Say something…" style="border-radius:10px; padding:10px 12px; font-size:14px;" onkeydown="if(event.key==='Enter')sendMessage()" />
+      <button class="btn btn-primary" style="width:auto; padding:10px 16px; border-radius:10px; font-size:14px;" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
   <div class="options-row" id="options-area" style="margin-top:20px;">
     <select id="from-time">
       <option value="">Available any time</option>
@@ -285,6 +301,7 @@ let currentGroup = null;
 let mySignalId = null;
 let pollTimer = null;
 let oneOnOneOk = false;
+let lastMessageCount = 0;
 
 const COLORS = ['#7d75c4','#ffbc5c','#ff9e7a','#9fb7ff','#7ed9a8'];
 
@@ -380,19 +397,28 @@ function openGroup(g) {
   currentGroup = g;
   mySignalId = null;
   oneOnOneOk = false;
+  lastMessageCount = 0;
   document.getElementById('group-title').textContent = g.name;
   document.getElementById('tog-1on1-box').textContent = '';
   document.getElementById('tog-1on1').classList.remove('on');
+  document.getElementById('chat-area').style.display = 'none';
+  document.getElementById('chat-messages').innerHTML = '';
   show('screen-group');
   pollStatus();
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(pollStatus, 5000);
+  pollTimer = setInterval(poll, 5000);
 }
 
 function leaveGroup() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
   loadGroups();
+}
+
+async function poll() {
+  await pollStatus();
+  const chatArea = document.getElementById('chat-area');
+  if (chatArea.style.display !== 'none') await pollChat();
 }
 
 async function toggleSignal() {
@@ -425,6 +451,7 @@ function renderStatus(s) {
   const btn = document.getElementById('main-btn');
   const area = document.getElementById('status-area');
   const opts = document.getElementById('options-area');
+  const chat = document.getElementById('chat-area');
 
   btn.className = 'btn-big';
   area.innerHTML = '';
@@ -432,10 +459,12 @@ function renderStatus(s) {
   if (s.status === 'idle') {
     btn.textContent = "I'm down\nto hang";
     opts.style.display = 'flex';
+    chat.style.display = 'none';
   } else if (s.status === 'pending') {
     btn.classList.add('pending');
     btn.textContent = 'Waiting for\nfriends…';
     opts.style.display = 'none';
+    chat.style.display = 'none';
     area.innerHTML = `<div class="status-card"><h3>You're quietly in 🤫</h3><p>Nobody knows yet. You'll be notified when enough friends are also down.</p></div>`;
   } else if (s.status === 'on') {
     btn.classList.add('on');
@@ -445,13 +474,57 @@ function renderStatus(s) {
     const names = others.map(p => p.name).join(', ');
     const time = s.earliestFrom ? ` · from ${s.earliestFrom}` : '';
     area.innerHTML = `<div class="status-card on"><h3>${s.mode === 'pair' ? "Just you two 🎉" : "Squad's hanging ✨"}</h3><p>${esc(names) || 'Friends'} are also down${time}.</p>${avatarList(s.participants)}</div><div style="margin-top:12px;"><button class="btn btn-ghost" onclick="toggleSignal()">Actually, cancel</button></div>`;
+    showChat();
   } else if (s.status === 'heads_up') {
     btn.classList.add('heads_up');
     btn.textContent = 'Jump in?';
-    opts.style.display = 'flex';
+    opts.style.display = 'none';
     const time = s.earliestFrom ? ` from ${s.earliestFrom}` : '';
-    area.innerHTML = `<div class="status-card heads_up"><h3>Some friends are hanging 👀</h3><p>Tap the button to join them${time}.</p></div>`;
+    area.innerHTML = `<div class="status-card heads_up"><h3>Some friends are hanging 👀</h3><p>Join them${time} — tap below to join the hang.</p><button class="btn btn-primary" style="margin-top:12px;" onclick="joinHang()">Join this hang</button></div>`;
+    showChat();
   }
+}
+
+function showChat() {
+  const chat = document.getElementById('chat-area');
+  chat.style.display = 'flex';
+  chat.style.flexDirection = 'column';
+  pollChat();
+}
+
+async function pollChat() {
+  if (!currentGroup) return;
+  const msgs = await api('GET', `/api/groups/${currentGroup.id}/chat`);
+  if (!Array.isArray(msgs)) return;
+  if (msgs.length === lastMessageCount) return;
+  lastMessageCount = msgs.length;
+  const box = document.getElementById('chat-messages');
+  box.innerHTML = msgs.length === 0
+    ? `<p style="color:var(--muted);font-size:13px;text-align:center;">No messages yet — say hi!</p>`
+    : msgs.map(m => {
+        const mine = m.userId === me.id;
+        return `<div class="msg${mine ? ' is-mine' : ''}">
+          <span class="msg-name${mine ? ' mine' : ''}">${esc(m.name)}</span>
+          <div class="msg-bubble">${esc(m.text)}</div>
+        </div>`;
+      }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  await api('POST', `/api/groups/${currentGroup.id}/chat`, { userId: me.id, text });
+  await pollChat();
+}
+
+async function joinHang() {
+  const fromTime = null;
+  const res = await api('POST', `/api/groups/${currentGroup.id}/signals`, { userId: me.id, fromTime, oneOnOneOk: true });
+  if (res.signalId) mySignalId = res.signalId;
+  renderStatus(res);
 }
 
 function avatarList(participants) {
