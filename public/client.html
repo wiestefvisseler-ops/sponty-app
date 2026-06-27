@@ -243,14 +243,7 @@
   </div>
 
   <div class="options-row" id="options-area" style="margin-top:20px;">
-    <select id="from-time">
-      <option value="">Available any time</option>
-      <option value="12:00">From noon</option>
-      <option value="14:00">From 2 pm</option>
-      <option value="16:00">From 4 pm</option>
-      <option value="18:00">From 6 pm</option>
-      <option value="20:00">From 8 pm</option>
-    </select>
+    <select id="from-time"></select>
     <button class="tog" id="tog-1on1" onclick="toggle1on1()">
       <span class="tog-box" id="tog-1on1-box"></span>
       <span>1-on-1 is fine<small>Match even if it's just one other person</small></span>
@@ -402,6 +395,7 @@ function openGroup(g) {
   document.getElementById('tog-1on1-box').textContent = '';
   document.getElementById('tog-1on1').classList.remove('on');
   document.getElementById('chat-area').style.display = 'none';
+  populateTimeOptions();
   document.getElementById('chat-messages').innerHTML = '';
   show('screen-group');
   pollStatus();
@@ -432,6 +426,27 @@ async function toggleSignal() {
     if (res.signalId) mySignalId = res.signalId;
     renderStatus(res);
   }
+}
+
+function populateTimeOptions() {
+  const sel = document.getElementById('from-time');
+  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+  const slots = [
+    ['', 'Available any time'],
+    ['12:00', 'From noon'],
+    ['14:00', 'From 2 pm'],
+    ['16:00', 'From 4 pm'],
+    ['18:00', 'From 6 pm'],
+    ['20:00', 'From 8 pm'],
+  ];
+  sel.innerHTML = slots
+    .filter(([val]) => {
+      if (!val) return true;
+      const [h, m] = val.split(':').map(Number);
+      return h * 60 + m > nowMinutes;
+    })
+    .map(([val, label]) => `<option value="${val}">${label}</option>`)
+    .join('');
 }
 
 function toggle1on1() {
