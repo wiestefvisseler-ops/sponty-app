@@ -1,6 +1,6 @@
 {
   "name": "sponty-backend",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Backend + matching engine for Sponty — spontaneous, low-pressure group hangs that stay invisible until enough friends are quietly in.",
   "type": "commonjs",
