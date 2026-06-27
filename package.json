@@ -8,5 +8,8 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "node test/engine.test.js"
+  },
+  "dependencies": {
+    "web-push": "^3.6.7"
   }
 }
