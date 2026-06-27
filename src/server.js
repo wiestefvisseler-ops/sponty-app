@@ -13,10 +13,10 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
-const { ConsoleNotifier } = require('./notifier');
+const { WebPushNotifier, PUBLIC_VAPID_KEY } = require('./notifier');
 
 const PORT = process.env.PORT || 4000;
-const notifier = new ConsoleNotifier();
+const notifier = new WebPushNotifier();
 
 function sendJson(res, status, obj) {
   res.writeHead(status, {
@@ -52,15 +52,19 @@ async function dispatch(notifications) {
 
 // [method, pathRegex, handler(req, res, params, query)]
 const routes = [
-  ['POST', /^\/api\/users$/, async (req, res) => {
-    const b = await readBody(req);
-    sendJson(res, 201, store.createUser({ name: b.name, pushToken: b.pushToken }));
+  ['GET', /^\/api\/vapid-public-key$/, async (req, res) => {
+    sendJson(res, 200, { key: PUBLIC_VAPID_KEY });
   }],
 
-  ['POST', /^\/api\/users\/(?<id>[^/]+)\/push-token$/, async (req, res, p) => {
+  ['POST', /^\/api\/users$/, async (req, res) => {
     const b = await readBody(req);
-    const u = store.setPushToken(p.id, b.pushToken);
-    u ? sendJson(res, 200, u) : sendJson(res, 404, { error: 'user not found' });
+    sendJson(res, 201, store.createUser({ name: b.name }));
+  }],
+
+  ['POST', /^\/api\/users\/(?<id>[^/]+)\/push-subscription$/, async (req, res, p) => {
+    const b = await readBody(req);
+    const u = store.setPushSubscription(p.id, b.subscription);
+    u ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'user not found' });
   }],
 
   ['GET', /^\/api\/users\/(?<id>[^/]+)\/groups$/, async (req, res, p) => {
@@ -124,13 +128,22 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'OPTIONS') return sendJson(res, 204, {});
 
-  if (req.method === 'GET' && (pathname === '/' || pathname === '/client.html')) {
+  const staticFiles = {
+    '/':             ['client.html', 'text/html'],
+    '/client.html':  ['client.html', 'text/html'],
+    '/manifest.json':['manifest.json', 'application/manifest+json'],
+    '/sw.js':        ['sw.js', 'application/javascript'],
+    '/icon.png':     ['icon.png', 'image/png'],
+    '/icon-512.png': ['icon-512.png', 'image/png'],
+  };
+  if (req.method === 'GET' && staticFiles[pathname]) {
+    const [file, mime] = staticFiles[pathname];
     try {
-      const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'client.html'));
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      return res.end(html);
+      const data = fs.readFileSync(path.join(__dirname, '..', 'public', file));
+      res.writeHead(200, { 'Content-Type': mime });
+      return res.end(data);
     } catch {
-      return sendJson(res, 404, { error: 'demo client not found' });
+      return sendJson(res, 404, { error: 'not found' });
     }
   }
   if (req.method === 'GET' && pathname === '/health') return sendJson(res, 200, { ok: true });

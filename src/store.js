@@ -37,10 +37,10 @@ function createUser({ name, pushToken = null }) {
   return u;
 }
 const getUser = (id) => users.get(id) || null;
-function setPushToken(userId, pushToken) {
+function setPushSubscription(userId, subscription) {
   const u = users.get(userId);
   if (!u) return null;
-  u.pushToken = pushToken;
+  u.pushSubscription = subscription;
   return u;
 }
 
@@ -261,7 +261,7 @@ function debugGroupState(groupId) {
 }
 
 module.exports = {
-  createUser, getUser, setPushToken,
+  createUser, getUser, setPushSubscription,
   createGroup, getGroup, addMember, listGroupsForUser,
   createSignal, cancelSignal, getUserStatus, debugGroupState,
   EVENT_TTL_MS,

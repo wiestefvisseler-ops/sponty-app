@@ -1,35 +1,51 @@
 'use strict';
 
-/* ------------------------------------------------------------------ *
- *  notifier.js — where a real push notification goes out.
- *
- *  The app talks to a `send(user, payload)` interface, so you can swap the
- *  dev console logger for Expo / APNs / FCM without touching any logic.
- * ------------------------------------------------------------------ */
+const webpush = require('web-push');
+
+// VAPID keys are generated once at startup. Set VAPID_PUBLIC_KEY and
+// VAPID_PRIVATE_KEY as env vars in Railway to make them persist across deploys.
+let vapidPublic, vapidPrivate;
+
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  vapidPublic  = process.env.VAPID_PUBLIC_KEY;
+  vapidPrivate = process.env.VAPID_PRIVATE_KEY;
+} else {
+  const keys = webpush.generateVAPIDKeys();
+  vapidPublic  = keys.publicKey;
+  vapidPrivate = keys.privateKey;
+  console.log('\n  ⚠️  No VAPID keys set — generated temporary ones.');
+  console.log('     Push subscriptions will break on next redeploy.');
+  console.log('     Set these in Railway environment variables to fix it:');
+  console.log(`     VAPID_PUBLIC_KEY=${vapidPublic}`);
+  console.log(`     VAPID_PRIVATE_KEY=${vapidPrivate}\n`);
+}
+
+webpush.setVapidDetails('mailto:sponty@example.com', vapidPublic, vapidPrivate);
+
+// Exported so the server can give it to clients
+const PUBLIC_VAPID_KEY = vapidPublic;
+
+class WebPushNotifier {
+  async send(user, { title, body }) {
+    if (!user.pushSubscription) return;
+    try {
+      await webpush.sendNotification(
+        user.pushSubscription,
+        JSON.stringify({ title, body })
+      );
+    } catch (e) {
+      // Subscription expired or revoked — clear it
+      if (e.statusCode === 410 || e.statusCode === 404) {
+        user.pushSubscription = null;
+      }
+    }
+  }
+}
 
 class ConsoleNotifier {
   async send(user, { title, body }) {
-    const tag = user.pushToken ? `token=${user.pushToken}` : 'no push token';
-    console.log(`  🔔  -> ${user.name} (${tag})\n        ${title} — ${body}`);
+    console.log(`  🔔  -> ${user.name}\n        ${title} — ${body}`);
   }
 }
 
-/**
- * Expo push skeleton. Wiring this up is one `fetch` once you have real
- * device tokens from the mobile app (see README -> "Add real push").
- * Left as a no-network stub so this repo runs with zero dependencies.
- */
-class ExpoNotifier {
-  async send(user, { title, body, data }) {
-    if (!user.pushToken) return;
-    // Production:
-    // await fetch('https://exp.host/--/api/v2/push/send', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ to: user.pushToken, title, body, data }),
-    // });
-    console.log(`  [expo stub] would push to ${user.pushToken}: ${title}`);
-  }
-}
-
-module.exports = { ConsoleNotifier, ExpoNotifier };
+module.exports = { WebPushNotifier, ConsoleNotifier, PUBLIC_VAPID_KEY };
