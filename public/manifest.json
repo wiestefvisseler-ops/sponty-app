@@ -1,0 +1,13 @@
+{
+  "name": "Sponty",
+  "short_name": "Sponty",
+  "description": "Hang with friends, no awkward planning",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#13111c",
+  "theme_color": "#13111c",
+  "icons": [
+    { "src": "/icon.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
