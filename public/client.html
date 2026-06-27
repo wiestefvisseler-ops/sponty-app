@@ -335,8 +335,9 @@ async function doLogin() {
 async function loadGroups() {
   show('screen-groups');
   document.getElementById('groups-greeting').textContent = `Hey ${me.name} 👋`;
-  document.getElementById('notif-banner').style.display =
-    ('Notification' in window && Notification.permission !== 'granted') ? 'block' : 'none';
+  const notifSupported = 'Notification' in window && 'PushManager' in window;
+  const notifNeeded = notifSupported && Notification.permission !== 'granted';
+  document.getElementById('notif-banner').style.display = notifNeeded ? 'block' : 'none';
   const list = document.getElementById('groups-list');
   list.innerHTML = '<div class="loader">Loading…</div>';
   const groups = await api('GET', `/api/users/${me.id}/groups`);
