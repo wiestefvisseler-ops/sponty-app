@@ -2,7 +2,11 @@ const CACHE = 'sponty-v1';
 const SHELL = ['/', '/manifest.json', '/icon.png', '/icon-512.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE).then(c =>
+      Promise.allSettled(SHELL.map(url => c.add(url)))
+    ).then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', e => {
