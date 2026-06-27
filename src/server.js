@@ -80,14 +80,20 @@ const routes = [
 
   ['POST', /^\/api\/groups$/, async (req, res) => {
     const b = await readBody(req);
-    const g = store.createGroup({ name: b.name, memberIds: b.memberIds || [], minPeople: b.minPeople });
-    sendJson(res, 201, { id: g.id, name: g.name, minPeople: g.minPeople, memberIds: [...g.memberIds] });
+    const g = store.createGroup({ name: b.name, memberIds: b.memberIds || [], minPeople: b.minPeople, ownerId: b.ownerId });
+    sendJson(res, 201, { id: g.id, name: g.name, minPeople: g.minPeople, ownerId: g.ownerId, memberIds: [...g.memberIds] });
   }],
 
   ['GET', /^\/api\/groups\/(?<id>[^/]+)$/, async (req, res, p) => {
     const g = store.getGroup(p.id);
     if (!g) return sendJson(res, 404, { error: 'group not found' });
-    sendJson(res, 200, { id: g.id, name: g.name, members: [...g.memberIds].map((id) => ({ id, name: (store.getUser(id) || {}).name })) });
+    sendJson(res, 200, { id: g.id, name: g.name, ownerId: g.ownerId, members: [...g.memberIds].map((id) => ({ id, name: (store.getUser(id) || {}).name })) });
+  }],
+
+  ['DELETE', /^\/api\/groups\/(?<id>[^/]+)\/members\/(?<userId>[^/]+)$/, async (req, res, p, q) => {
+    const requesterId = q.get('requesterId');
+    const result = store.removeMember(p.id, p.userId, requesterId);
+    result.ok ? sendJson(res, 200, { ok: true }) : sendJson(res, 403, result);
   }],
 
   ['POST', /^\/api\/groups\/(?<id>[^/]+)\/members$/, async (req, res, p) => {

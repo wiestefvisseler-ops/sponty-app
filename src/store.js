@@ -50,13 +50,21 @@ function setPushSubscription(userId, subscription) {
 }
 
 /* ----------------------------- groups ---------------------------- */
-function createGroup({ name, memberIds = [], minPeople = DEFAULT_THRESHOLD }) {
+function createGroup({ name, memberIds = [], minPeople = DEFAULT_THRESHOLD, ownerId = null }) {
   const min = Math.max(3, Math.min(10, Number(minPeople) || DEFAULT_THRESHOLD));
-  const g = { id: randomUUID(), name: String(name || 'Group'), memberIds: new Set(memberIds), minPeople: min };
+  const g = { id: randomUUID(), name: String(name || 'Group'), memberIds: new Set(memberIds), minPeople: min, ownerId };
   groups.set(g.id, g);
   return g;
 }
 const getGroup = (id) => groups.get(id) || null;
+function removeMember(groupId, userId, requesterId) {
+  const g = groups.get(groupId);
+  if (!g) return { ok: false, error: 'group not found' };
+  if (g.ownerId !== requesterId) return { ok: false, error: 'not the group owner' };
+  if (userId === requesterId) return { ok: false, error: 'cannot remove yourself' };
+  g.memberIds.delete(userId);
+  return { ok: true };
+}
 function addMember(groupId, userId) {
   const g = groups.get(groupId);
   if (!g) return null;
@@ -298,5 +306,5 @@ module.exports = {
   createUser, getUser, setPushSubscription,
   createGroup, getGroup, addMember, listGroupsForUser,
   createSignal, cancelSignal, getUserStatus, debugGroupState,
-  getMessages, addMessage, chatAudienceIds,
+  getMessages, addMessage, chatAudienceIds, removeMember,
 };
