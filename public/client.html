@@ -199,6 +199,18 @@
       <p class="sub" style="margin-bottom:20px;">e.g. "Close friends", "Flatmates", "Work gang"</p>
       <input id="create-group-name" type="text" placeholder="Group name" />
     </div>
+    <div>
+      <p style="font-size:14px; font-weight:600; margin-bottom:8px;">Minimum people to hang</p>
+      <p class="sub" style="margin-bottom:12px;">How many need to be down before it triggers?</p>
+      <select id="create-group-min" style="border-radius:14px;">
+        <option value="3" selected>3 people (default)</option>
+        <option value="4">4 people</option>
+        <option value="5">5 people</option>
+        <option value="6">6 people</option>
+        <option value="7">7 people</option>
+        <option value="8">8 people</option>
+      </select>
+    </div>
     <button class="btn btn-primary" onclick="doCreateGroup()">Create group</button>
   </div>
 </div>
@@ -226,6 +238,8 @@
     <span class="topbar-title" id="group-title"></span>
     <button class="btn-ghost btn" style="width:auto; padding:7px 12px; font-size:12px;" onclick="showGroupCode()">Invite</button>
   </div>
+
+  <div id="members-row" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px;"></div>
 
   <div class="btn-big-wrap">
     <button class="btn-big" id="main-btn" onclick="toggleSignal()">I'm down&#10;to hang</button>
@@ -325,7 +339,7 @@ async function api(method, path, body) {
 
 async function doSignup() {
   const name = document.getElementById('signup-name').value.trim();
-  if (!name) return toast('Please enter your name');
+  if (!name) return toast('Please enter your name — no name, no hang 😄');
   const u = await api('POST', '/api/users', { name });
   if (!u.id) return toast('Something went wrong');
   me = { id: u.id, name: u.name };
@@ -372,7 +386,8 @@ async function loadGroups() {
 async function doCreateGroup() {
   const name = document.getElementById('create-group-name').value.trim();
   if (!name) return toast('Give your group a name');
-  const g = await api('POST', '/api/groups', { name, memberIds: [me.id] });
+  const minPeople = Number(document.getElementById('create-group-min').value);
+  const g = await api('POST', '/api/groups', { name, memberIds: [me.id], minPeople });
   if (!g.id) return toast('Something went wrong');
   openGroup(g);
 }
@@ -395,12 +410,28 @@ function openGroup(g) {
   document.getElementById('tog-1on1-box').textContent = '';
   document.getElementById('tog-1on1').classList.remove('on');
   document.getElementById('chat-area').style.display = 'none';
+  document.getElementById('members-row').innerHTML = '';
   populateTimeOptions();
   document.getElementById('chat-messages').innerHTML = '';
   show('screen-group');
+  loadMembers();
   pollStatus();
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(poll, 5000);
+}
+
+async function loadMembers() {
+  const g = await api('GET', `/api/groups/${currentGroup.id}`);
+  if (!g || !g.members) return;
+  const row = document.getElementById('members-row');
+  row.innerHTML = g.members.map((m, i) => {
+    const isMe = m.id === me.id;
+    const letter = esc((m.name || '?')[0].toUpperCase());
+    return `<div style="display:flex;align-items:center;gap:5px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 10px 5px 6px;">
+      <div class="av" style="width:22px;height:22px;font-size:10px;background:${COLORS[i%COLORS.length]}">${letter}</div>
+      <span style="font-size:13px;font-weight:600;">${esc(m.name)}${isMe ? ' <span style="color:var(--muted);font-weight:400;">(you)</span>' : ''}</span>
+    </div>`;
+  }).join('');
 }
 
 function leaveGroup() {
