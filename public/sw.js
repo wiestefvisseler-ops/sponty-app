@@ -13,9 +13,27 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Never cache API calls — always go to network
   if (url.pathname.startsWith('/api/')) return;
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
-  );
+  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+});
+
+// Show notification when a push arrives (app is in background)
+self.addEventListener('push', e => {
+  let data = { title: 'Sponty', body: "Something's happening with your friends!" };
+  try { data = e.data.json(); } catch {}
+  e.waitUntil(self.registration.showNotification(data.title, {
+    body: data.body,
+    icon: '/icon.png',
+    badge: '/icon.png',
+    vibrate: [200, 100, 200],
+  }));
+});
+
+// Tap notification -> open the app
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(clients.matchAll({ type: 'window' }).then(list => {
+    if (list.length) return list[0].focus();
+    return clients.openWindow('/');
+  }));
 });

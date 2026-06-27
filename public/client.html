@@ -314,6 +314,7 @@ async function doSignup() {
   me = { id: u.id, name: u.name };
   save();
   loadGroups();
+  enablePush();
 }
 
 async function doLogin() {
@@ -324,6 +325,7 @@ async function doLogin() {
   me = { id: code, name: 'You' };
   save();
   loadGroups();
+  enablePush();
 }
 
 async function loadGroups() {
@@ -468,7 +470,39 @@ function copyGroupCode() {
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  navigator.serviceWorker.register('/sw.js').then(async reg => {
+    // Ask for notification permission after user has signed in
+    if (!me) return;
+    if (Notification.permission === 'granted') {
+      await subscribePush(reg);
+    }
+  }).catch(() => {});
+}
+
+async function enablePush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') return;
+  const reg = await navigator.serviceWorker.ready;
+  await subscribePush(reg);
+}
+
+async function subscribePush(reg) {
+  try {
+    const { key } = await api('GET', '/api/vapid-public-key');
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(key),
+    });
+    await api('POST', `/api/users/${me.id}/push-subscription`, { subscription: sub });
+  } catch {}
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
 }
 </script>
 </body>
