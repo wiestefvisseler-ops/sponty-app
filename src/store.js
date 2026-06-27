@@ -15,18 +15,22 @@
 const { randomUUID } = require('crypto');
 const { resolveSignals } = require('./engine');
 
-const EVENT_TTL_MS = 6 * 60 * 60 * 1000; // a triggered hang stays live for 6h
-
 function midnightTonight() {
   const d = new Date();
   d.setHours(24, 0, 0, 0);
   return d.getTime();
 }
 
-const users = new Map(); // id -> { id, name, pushToken }
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+const users = new Map();  // id -> { id, name, pushSubscription }
 const groups = new Map(); // id -> { id, name, memberIds: Set }
 const signals = new Map(); // id -> signal
 const events = new Map(); // groupId -> event (at most one live hang per group)
+const messages = new Map(); // `${groupId}:${dateKey}` -> [{ id, userId, name, text, createdAt }]
 
 const now = () => Date.now();
 
@@ -118,7 +122,7 @@ function recompute(groupId) {
       mode: decision.mode,
       participantUserIds: new Set(decision.participantUserIds),
       createdAt: now(),
-      expiresAt: now() + EVENT_TTL_MS,
+      expiresAt: midnightTonight(),
       sent: new Map(), // userId -> 'its_on' | 'heads_up' (dedupe)
     };
     events.set(groupId, event);
@@ -260,9 +264,25 @@ function debugGroupState(groupId) {
   };
 }
 
+/* ----------------------------- chat ----------------------------- */
+function getMessages(groupId) {
+  const key = `${groupId}:${todayKey()}`;
+  return messages.get(key) || [];
+}
+
+function addMessage(groupId, userId, text) {
+  const user = users.get(userId);
+  if (!user) return null;
+  const key = `${groupId}:${todayKey()}`;
+  if (!messages.has(key)) messages.set(key, []);
+  const msg = { id: randomUUID(), userId, name: user.name, text: String(text).slice(0, 500), createdAt: now() };
+  messages.get(key).push(msg);
+  return msg;
+}
+
 module.exports = {
   createUser, getUser, setPushSubscription,
   createGroup, getGroup, addMember, listGroupsForUser,
   createSignal, cancelSignal, getUserStatus, debugGroupState,
-  EVENT_TTL_MS,
+  getMessages, addMessage,
 };

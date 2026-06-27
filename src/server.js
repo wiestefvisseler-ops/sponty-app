@@ -117,6 +117,16 @@ const routes = [
     sendJson(res, 200, store.getUserStatus(p.id, userId));
   }],
 
+  ['GET', /^\/api\/groups\/(?<id>[^/]+)\/chat$/, async (req, res, p) => {
+    sendJson(res, 200, store.getMessages(p.id));
+  }],
+
+  ['POST', /^\/api\/groups\/(?<id>[^/]+)\/chat$/, async (req, res, p) => {
+    const b = await readBody(req);
+    const msg = store.addMessage(p.id, b.userId, b.text);
+    msg ? sendJson(res, 201, msg) : sendJson(res, 400, { error: 'user not found' });
+  }],
+
   // DEMO ONLY — full god-view of a group. Delete before shipping.
   ['GET', /^\/api\/debug\/groups\/(?<id>[^/]+)$/, async (req, res, p) => {
     const s = store.debugGroupState(p.id);
