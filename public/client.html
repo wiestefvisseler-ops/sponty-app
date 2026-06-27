@@ -167,6 +167,10 @@
     <p class="sub">Pick a group to hang with.</p>
   </div>
   <div id="groups-list" class="stack"></div>
+  <div id="notif-banner" style="display:none; margin-top:16px; background:#1e1b2b; border:1px solid #2d2a42; border-radius:14px; padding:14px 16px;">
+    <p style="font-size:13px; color:var(--muted); margin-bottom:10px;">🔔 Enable notifications so you get alerted when friends are down.</p>
+    <button class="btn btn-primary" style="font-size:14px; padding:11px;" onclick="enablePush()">Enable notifications</button>
+  </div>
   <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px;">
     <div class="or">or</div>
     <button class="btn btn-primary" onclick="show('screen-create-group')">Create a group</button>
@@ -331,6 +335,8 @@ async function doLogin() {
 async function loadGroups() {
   show('screen-groups');
   document.getElementById('groups-greeting').textContent = `Hey ${me.name} 👋`;
+  document.getElementById('notif-banner').style.display =
+    ('Notification' in window && Notification.permission !== 'granted') ? 'block' : 'none';
   const list = document.getElementById('groups-list');
   list.innerHTML = '<div class="loader">Loading…</div>';
   const groups = await api('GET', `/api/users/${me.id}/groups`);
@@ -482,6 +488,7 @@ if ('serviceWorker' in navigator) {
 async function enablePush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   const permission = await Notification.requestPermission();
+  document.getElementById('notif-banner').style.display = 'none';
   if (permission !== 'granted') return;
   const reg = await navigator.serviceWorker.ready;
   await subscribePush(reg);
