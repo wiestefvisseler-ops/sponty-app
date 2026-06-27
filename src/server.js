@@ -175,7 +175,9 @@ const server = http.createServer(async (req, res) => {
     '/manifest.json':['manifest.json', 'application/manifest+json'],
     '/sw.js':        ['sw.js', 'application/javascript'],
     '/icon.png':     ['icon.png', 'image/png'],
-    '/icon-512.png': ['icon-512.png', 'image/png'],
+    '/icon-512.png': ['icon-512x512.png', 'image/png'],
+    '/idle.png':     ['spontychill_swing_idle.png', 'image/png'],
+    '/match.gif':    ['spontychill_swing_cheer.gif', 'image/gif'],
   };
   if (req.method === 'GET' && staticFiles[pathname]) {
     const [file, mime] = staticFiles[pathname];
