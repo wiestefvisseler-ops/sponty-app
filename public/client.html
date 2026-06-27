@@ -175,8 +175,7 @@
     <p class="sub">Pick a group to hang with.</p>
   </div>
   <div id="groups-list" class="stack"></div>
-  <div id="notif-debug" style="font-size:11px;color:var(--muted);padding:8px 0;word-break:break-all;"></div>
-  <div id="notif-banner" style="display:none; margin-top:16px; background:#1e1b2b; border:1px solid #2d2a42; border-radius:14px; padding:14px 16px;">
+<div id="notif-banner" style="display:none; margin-top:16px; background:#1e1b2b; border:1px solid #2d2a42; border-radius:14px; padding:14px 16px;">
     <p style="font-size:13px; color:var(--muted); margin-bottom:10px;">🔔 Enable notifications so you get alerted when friends are down.</p>
     <button class="btn btn-primary" style="font-size:14px; padding:11px;" onclick="enablePush()">Enable notifications</button>
   </div>
@@ -365,7 +364,6 @@ async function loadGroups() {
   const notifSupported = 'Notification' in window && 'PushManager' in window;
   const notifNeeded = notifSupported && Notification.permission !== 'granted';
   document.getElementById('notif-banner').style.display = notifNeeded ? 'block' : 'none';
-  document.getElementById('notif-debug').textContent = `Notification: ${'Notification' in window} | PushManager: ${'PushManager' in window} | permission: ${('Notification' in window) ? Notification.permission : 'n/a'} | standalone: ${window.navigator.standalone}`;
   const list = document.getElementById('groups-list');
   list.innerHTML = '<div class="loader">Loading…</div>';
   const groups = await api('GET', `/api/users/${me.id}/groups`);
