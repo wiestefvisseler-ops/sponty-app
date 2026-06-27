@@ -264,5 +264,5 @@ module.exports = {
   createUser, getUser, setPushToken,
   createGroup, getGroup, addMember, listGroupsForUser,
   createSignal, cancelSignal, getUserStatus, debugGroupState,
-  SIGNAL_TTL_MS, EVENT_TTL_MS,
+  EVENT_TTL_MS,
 };
