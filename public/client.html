@@ -240,6 +240,10 @@
 
   <div id="members-row" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px;"></div>
 
+  <div style="text-align:center; margin-bottom:4px;">
+    <img id="vibe-img" src="/idle.png" style="width:100%; max-width:340px; border-radius:16px;" />
+  </div>
+
   <div class="btn-big-wrap">
     <button class="btn-big" id="main-btn" onclick="toggleSignal()">I'm down&#10;to hang</button>
   </div>
@@ -520,6 +524,9 @@ function renderStatus(s) {
 
   btn.className = 'btn-big';
   area.innerHTML = '';
+
+  const vibeImg = document.getElementById('vibe-img');
+  vibeImg.src = s.status === 'on' ? '/match.gif' : '/idle.png';
 
   if (s.status === 'idle') {
     btn.textContent = "I'm down\nto hang";
