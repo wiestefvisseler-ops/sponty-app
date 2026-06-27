@@ -511,8 +511,13 @@ async function subscribePush(reg) {
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(key),
     });
-    await api('POST', `/api/users/${me.id}/push-subscription`, { subscription: sub });
-  } catch {}
+    const subJson = sub.toJSON();
+    console.log('push sub:', JSON.stringify(subJson));
+    const result = await api('POST', `/api/users/${me.id}/push-subscription`, { subscription: subJson });
+    console.log('push sub saved:', JSON.stringify(result));
+  } catch (e) {
+    console.error('subscribePush failed:', e);
+  }
 }
 
 function urlBase64ToUint8Array(base64String) {
