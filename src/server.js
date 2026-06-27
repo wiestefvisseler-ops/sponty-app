@@ -74,6 +74,7 @@ const routes = [
   }],
 
   ['GET', /^\/api\/users\/(?<id>[^/]+)\/groups$/, async (req, res, p) => {
+    if (!store.getUser(p.id)) return sendJson(res, 404, { error: 'user not found' });
     sendJson(res, 200, store.listGroupsForUser(p.id).map((g) => ({ id: g.id, name: g.name, memberCount: g.memberIds.size })));
   }],
 
