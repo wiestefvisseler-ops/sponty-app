@@ -15,8 +15,13 @@
 const { randomUUID } = require('crypto');
 const { resolveSignals } = require('./engine');
 
-const SIGNAL_TTL_MS = 5 * 60 * 60 * 1000; // a "down" signal stays live for 5h
 const EVENT_TTL_MS = 6 * 60 * 60 * 1000; // a triggered hang stays live for 6h
+
+function midnightTonight() {
+  const d = new Date();
+  d.setHours(24, 0, 0, 0);
+  return d.getTime();
+}
 
 const users = new Map(); // id -> { id, name, pushToken }
 const groups = new Map(); // id -> { id, name, memberIds: Set }
@@ -162,7 +167,7 @@ function recompute(groupId) {
 }
 
 /* ---------------------------- signals ---------------------------- */
-function createSignal({ groupId, userId, fromTime = null, oneOnOneOk = false, ttlMs = SIGNAL_TTL_MS }) {
+function createSignal({ groupId, userId, fromTime = null, oneOnOneOk = false }) {
   const g = groups.get(groupId);
   if (!g) throw new Error('group not found');
   if (!g.memberIds.has(userId)) throw new Error('user is not a member of this group');
@@ -181,7 +186,7 @@ function createSignal({ groupId, userId, fromTime = null, oneOnOneOk = false, tt
     fromTime,
     oneOnOneOk: !!oneOnOneOk,
     createdAt: now(),
-    expiresAt: now() + ttlMs,
+    expiresAt: midnightTonight(),
     cancelled: false,
   };
   signals.set(sig.id, sig);
