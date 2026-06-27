@@ -500,8 +500,14 @@ async function enablePush() {
   const permission = await Notification.requestPermission();
   document.getElementById('notif-banner').style.display = 'none';
   if (permission !== 'granted') return;
-  const reg = await navigator.serviceWorker.ready;
-  await subscribePush(reg);
+  try {
+    let reg = await navigator.serviceWorker.getRegistration('/sw.js');
+    if (!reg) reg = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    await subscribePush(reg);
+  } catch (e) {
+    console.error('enablePush failed:', e);
+  }
 }
 
 async function subscribePush(reg) {
