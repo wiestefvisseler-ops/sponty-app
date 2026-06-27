@@ -254,6 +254,7 @@
       <p class="code-hint">Tap to copy</p>
     </div>
     <button class="btn btn-primary" onclick="copyAccountCode()">Copy code</button>
+    <button class="btn btn-ghost" onclick="doLogout()">Log out</button>
   </div>
 </div>
 
@@ -474,6 +475,12 @@ function showGroupCode() {
 }
 function copyGroupCode() {
   navigator.clipboard.writeText(currentGroup.id).then(() => toast('Copied!')).catch(() => { toast('Copy failed — tap the code to select it'); });
+}
+
+function doLogout() {
+  localStorage.removeItem('sponty_user');
+  me = null;
+  show('screen-welcome');
 }
 
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
