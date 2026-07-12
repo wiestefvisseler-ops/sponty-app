@@ -327,6 +327,17 @@ let pollTimer = null;
 let oneOnOneOk = false;
 let lastMessageCount = 0;
 
+// Preload the waiting image once. We only ever show it if it actually loads,
+// so a missing /waiting.png can never cause a broken-image flash — we just
+// keep using the idle swing image (which is always present) instead.
+let waitingImgOk = false;
+(function preloadWaiting() {
+  const im = new Image();
+  im.onload = () => { waitingImgOk = true; };
+  im.onerror = () => { waitingImgOk = false; };
+  im.src = '/waiting.png';
+})();
+
 const COLORS = ['#7d75c4','#ffbc5c','#ff9e7a','#9fb7ff','#7ed9a8'];
 
 function save() { localStorage.setItem('sponty_user', JSON.stringify(me)); }
@@ -544,7 +555,9 @@ function renderStatus(s) {
     vibeImg.src = '/match.gif';
     vibeImg.classList.remove('swinging');
   } else if (s.status === 'pending') {
-    vibeImg.src = '/waiting.png';   // person on the swing, checking their phone
+    // person on the swing checking their phone — but only if it loaded;
+    // otherwise fall back to the always-present idle swing image (no broken flash)
+    vibeImg.src = waitingImgOk ? '/waiting.png' : '/idle.png';
     vibeImg.classList.add('swinging');
   } else {
     vibeImg.src = '/idle.png';
