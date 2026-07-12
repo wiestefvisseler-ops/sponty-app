@@ -71,6 +71,20 @@
   .btn-big.heads_up { background: radial-gradient(circle at 50% 38%, #9fb7ff, #7090e0); color: #101a2e; box-shadow: 0 0 40px 4px rgba(159,183,255,.4); }
   .btn-big:active { transform: scale(.96); }
 
+  /* gentle pendulum sway on the swing while you're waiting for friends */
+  #vibe-img { transition: opacity .3s ease; }
+  #vibe-img.swinging {
+    transform-origin: 50% 7%;
+    animation: swaySwing 3.4s ease-in-out infinite alternate;
+  }
+  @keyframes swaySwing {
+    from { transform: rotate(-2.4deg); }
+    to   { transform: rotate(2.4deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #vibe-img.swinging { animation: none; }
+  }
+
   .status-card { border-radius: 16px; padding: 16px; border: 1px solid var(--line); background: #1a1729; }
   .status-card.on { background: #2c2012; border-color: #4a3618; }
   .status-card.heads_up { background: #161d30; border-color: #27314e; }
@@ -241,7 +255,7 @@
   <div id="members-row" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px;"></div>
 
   <div style="text-align:center; margin-bottom:4px;">
-    <img id="vibe-img" src="/idle.png" style="width:100%; max-width:340px; border-radius:16px;" />
+    <img id="vibe-img" src="/idle.png" onerror="if(this.src.indexOf('/idle.png')<0){this.src='/idle.png';}" style="width:100%; max-width:340px; border-radius:16px;" />
   </div>
 
   <div class="btn-big-wrap">
@@ -526,7 +540,16 @@ function renderStatus(s) {
   area.innerHTML = '';
 
   const vibeImg = document.getElementById('vibe-img');
-  vibeImg.src = s.status === 'on' ? '/match.gif' : '/idle.png';
+  if (s.status === 'on') {
+    vibeImg.src = '/match.gif';
+    vibeImg.classList.remove('swinging');
+  } else if (s.status === 'pending') {
+    vibeImg.src = '/waiting.png';   // person on the swing, checking their phone
+    vibeImg.classList.add('swinging');
+  } else {
+    vibeImg.src = '/idle.png';
+    vibeImg.classList.remove('swinging');
+  }
 
   if (s.status === 'idle') {
     btn.textContent = "I'm down\nto hang";
