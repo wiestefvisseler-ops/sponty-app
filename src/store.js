@@ -220,9 +220,29 @@ function cancelSignal(signalId, userId = null) {
   if (!s) return { ok: false, error: 'signal not found' };
   if (userId && s.userId !== userId) return { ok: false, error: 'not your signal' };
   s.cancelled = true;
-  // note: a hang that already fired is intentionally NOT torn down — once it's
-  // on, plans are made. Bailing just removes you from the visible roster.
+
+  // A live hang needs at least 2 people. Once it's on, people who bail just
+  // drop off the roster (plans are made) — UNLESS bailing collapses it to 1 or
+  // 0 people still down. At that point the hang can't hold, so we wipe the whole
+  // group clean — event, signals and chat — exactly like the 00:00 daily reset.
+  const event = activeEvent(s.groupId);
+  if (event && activeSignals(s.groupId).length < 2) {
+    resetGroup(s.groupId);
+  }
   return { ok: true };
+}
+
+/**
+ * Reset a single group's day: drop its live hang, clear everyone's "down"
+ * signals, and wipe today's chat. This is the same end-state a group reaches
+ * naturally at midnight — we just do it on demand when a hang collapses.
+ */
+function resetGroup(groupId) {
+  events.delete(groupId);
+  for (const id of [...signals.keys()]) {
+    if (signals.get(id).groupId === groupId) signals.delete(id);
+  }
+  messages.delete(`${groupId}:${todayKey()}`);
 }
 
 /* -------------------- privacy-safe per-user view ------------------ */
@@ -312,5 +332,5 @@ module.exports = {
   createUser, getUser, setPushSubscription,
   createGroup, getGroup, addMember, listGroupsForUser,
   createSignal, cancelSignal, getUserStatus, debugGroupState,
-  getMessages, addMessage, chatAudienceIds, removeMember,
+  getMessages, addMessage, chatAudienceIds, removeMember, resetGroup,
 };
