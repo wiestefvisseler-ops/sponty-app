@@ -78,6 +78,43 @@ const routes = [
     sendJson(res, 200, store.listGroupsForUser(p.id).map((g) => ({ id: g.id, name: g.name, memberCount: g.memberIds.size })));
   }],
 
+  /* ---- friends (private, separate from groups) ---- */
+  ['GET', /^\/api\/users\/(?<id>[^/]+)\/friends$/, async (req, res, p) => {
+    if (!store.getUser(p.id)) return sendJson(res, 404, { error: 'user not found' });
+    sendJson(res, 200, store.listFriends(p.id));
+  }],
+
+  ['POST', /^\/api\/users\/(?<id>[^/]+)\/friends$/, async (req, res, p) => {
+    const b = await readBody(req);
+    const result = store.addFriend(p.id, (b.friendCode || '').trim());
+    result.ok ? sendJson(res, 200, result) : sendJson(res, 400, result);
+  }],
+
+  ['DELETE', /^\/api\/users\/(?<id>[^/]+)\/friends\/(?<friendId>[^/]+)$/, async (req, res, p) => {
+    sendJson(res, 200, store.removeFriend(p.id, p.friendId));
+  }],
+
+  /* ---- 1-on-1 hangs (mutual match, no chat) ---- */
+  ['GET', /^\/api\/users\/(?<id>[^/]+)\/one-on-one$/, async (req, res, p) => {
+    if (!store.getUser(p.id)) return sendJson(res, 404, { error: 'user not found' });
+    sendJson(res, 200, store.getOneOnOneStatus(p.id));
+  }],
+
+  ['POST', /^\/api\/users\/(?<id>[^/]+)\/one-on-one$/, async (req, res, p) => {
+    const b = await readBody(req);
+    try {
+      const { notifications, status } = store.setOneOnOne(p.id, b.selectedIds || []);
+      await dispatch(notifications);
+      sendJson(res, 200, status);
+    } catch (e) {
+      sendJson(res, 400, { error: e.message });
+    }
+  }],
+
+  ['DELETE', /^\/api\/users\/(?<id>[^/]+)\/one-on-one$/, async (req, res, p) => {
+    sendJson(res, 200, store.cancelOneOnOne(p.id));
+  }],
+
   ['POST', /^\/api\/groups$/, async (req, res) => {
     const b = await readBody(req);
     const g = store.createGroup({ name: b.name, memberIds: b.memberIds || [], minPeople: b.minPeople, ownerId: b.ownerId });

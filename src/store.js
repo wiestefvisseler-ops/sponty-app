@@ -31,6 +31,9 @@ const groups = new Map(); // id -> { id, name, memberIds: Set }
 const signals = new Map(); // id -> signal
 const events = new Map(); // groupId -> event (at most one live hang per group)
 const messages = new Map(); // `${groupId}:${dateKey}` -> [{ id, userId, name, text, createdAt }]
+const friends = new Map();  // userId -> Set(friendId)  (symmetric: adding links both ways)
+const oneOnOne = new Map(); // userId -> { selected: Set(friendId), createdAt, expiresAt }
+const oneOnOneSent = new Set(); // `${aId}:${bId}:${dateKey}` pairs already notified today
 
 const now = () => Date.now();
 
@@ -328,9 +331,102 @@ function addMessage(groupId, userId, text) {
   return msg;
 }
 
+/* --------------------------- friends ---------------------------- */
+// A private, symmetric friends list, separate from groups. Adding by code
+// links both people so either can start a 1-on-1 with the other.
+function addFriend(userId, friendId) {
+  if (!userId || !friendId) return { ok: false, error: 'missing code' };
+  if (userId === friendId) return { ok: false, error: "that's your own code" };
+  const me = users.get(userId);
+  const friend = users.get(friendId);
+  if (!me) return { ok: false, error: 'user not found' };
+  if (!friend) return { ok: false, error: 'no one has that code' };
+  if (!friends.has(userId)) friends.set(userId, new Set());
+  if (!friends.has(friendId)) friends.set(friendId, new Set());
+  friends.get(userId).add(friendId);
+  friends.get(friendId).add(userId); // mutual — you're now connected both ways
+  return { ok: true, friend: { id: friend.id, name: friend.name } };
+}
+
+function listFriends(userId) {
+  const set = friends.get(userId) || new Set();
+  return [...set].filter((id) => users.has(id)).map((id) => ({ id, name: users.get(id).name }));
+}
+
+function removeFriend(userId, friendId) {
+  friends.get(userId) && friends.get(userId).delete(friendId);
+  friends.get(friendId) && friends.get(friendId).delete(userId);
+  // also drop them from any live 1-on-1 selection
+  const mine = oneOnOne.get(userId);
+  if (mine) mine.selected.delete(friendId);
+  const theirs = oneOnOne.get(friendId);
+  if (theirs) theirs.selected.delete(userId);
+  return { ok: true };
+}
+
+/* -------------------------- 1-on-1 hangs -------------------------- */
+// You flip yourself "down for a 1-on-1" and pick which friends you're open to.
+// A match happens ONLY when it's mutual: you picked them AND they picked you.
+// Nobody is told you're down unless you both are (same privacy promise as groups).
+function activeOneOnOne(userId) {
+  const o = oneOnOne.get(userId);
+  if (!o || o.expiresAt <= now()) return null;
+  return o;
+}
+
+function oneOnOneMatches(userId) {
+  const mine = activeOneOnOne(userId);
+  if (!mine) return [];
+  const out = [];
+  for (const fid of mine.selected) {
+    const theirs = activeOneOnOne(fid);
+    if (theirs && theirs.selected.has(userId)) out.push(fid);
+  }
+  return out;
+}
+
+function getOneOnOneStatus(userId) {
+  const mine = activeOneOnOne(userId);
+  return {
+    down: !!mine,
+    selected: mine ? [...mine.selected] : [],
+    matches: oneOnOneMatches(userId).map((id) => ({ id, name: (users.get(id) || {}).name || 'Friend' })),
+  };
+}
+
+const pairKey = (a, b) => `${[a, b].sort().join(':')}:${todayKey()}`;
+
+function setOneOnOne(userId, selectedIds = []) {
+  if (!users.get(userId)) throw new Error('user not found');
+  const myFriends = friends.get(userId) || new Set();
+  const selected = new Set((selectedIds || []).filter((id) => myFriends.has(id)));
+  oneOnOne.set(userId, { selected, createdAt: now(), expiresAt: midnightTonight() });
+
+  // notify each newly-mutual pair exactly once
+  const notifications = [];
+  for (const fid of oneOnOneMatches(userId)) {
+    const key = pairKey(userId, fid);
+    if (oneOnOneSent.has(key)) continue;
+    oneOnOneSent.add(key);
+    const me = users.get(userId);
+    const friend = users.get(fid);
+    if (!me || !friend) continue;
+    notifications.push({ userId, title: "It's on — just you two ✨", body: `${friend.name} is also down for a 1-on-1.` });
+    notifications.push({ userId: fid, title: "It's on — just you two ✨", body: `${me.name} is also down for a 1-on-1.` });
+  }
+  return { notifications, status: getOneOnOneStatus(userId) };
+}
+
+function cancelOneOnOne(userId) {
+  oneOnOne.delete(userId);
+  return { ok: true };
+}
+
 module.exports = {
   createUser, getUser, setPushSubscription,
   createGroup, getGroup, addMember, listGroupsForUser,
   createSignal, cancelSignal, getUserStatus, debugGroupState,
   getMessages, addMessage, chatAudienceIds, removeMember, resetGroup,
+  addFriend, listFriends, removeFriend,
+  setOneOnOne, cancelOneOnOne, getOneOnOneStatus,
 };
