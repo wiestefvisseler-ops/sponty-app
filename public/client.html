@@ -5,70 +5,79 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Sponty</title>
 <meta name="description" content="Hang with friends, no awkward planning" />
-<meta name="theme-color" content="#13111c" />
+<meta name="theme-color" content="#f7f6f3" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="Sponty" />
 <link rel="manifest" href="/manifest.json" />
 <link rel="apple-touch-icon" href="/icon.png" />
 <style>
   :root {
-    --bg: #13111c; --card: #1e1b2b; --line: #2d2a42;
-    --text: #f3f0f9; --muted: #9a95ad;
-    --indigo: #7d75c4; --amber: #ffbc5c; --amber-soft: #ffd79a;
-    --rose: #ff9e7a; --blue: #9fb7ff; --green: #7ed9a8;
+    --bg: #f7f6f3;          /* warm off-white */
+    --card: #ffffff;        /* clean surface */
+    --line: #ebe6df;        /* warm hairline */
+    --text: #1c1a17;        /* warm near-black */
+    --muted: #938d83;       /* warm gray */
+    --indigo: #7b76a6;      /* dusty lavender — the calm accent */
+    --indigo-soft: #eceaf4;
+    --amber: #db8b66;       /* soft coral — warmth / "it's on" */
+    --amber-soft: #f6e2d6;
+    --rose: #db8b66;
+    --blue: #7f9bcf; --green: #6ea88a;
+    --shadow: 0 12px 30px -20px rgba(45,38,28,.35);
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
     background: var(--bg); color: var(--text);
     font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
     min-height: 100dvh; display: flex; flex-direction: column;
+    -webkit-font-smoothing: antialiased;
   }
 
-  .screen { display: none; flex-direction: column; flex: 1; padding: 28px 20px 48px; max-width: 480px; width: 100%; margin: 0 auto; }
+  .screen { display: none; flex-direction: column; flex: 1; padding: 32px 22px 52px; max-width: 460px; width: 100%; margin: 0 auto; }
   .screen.active { display: flex; }
 
-  h1 { font-size: 28px; font-weight: 800; letter-spacing: -.03em; }
-  h2 { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
-  .sub { color: var(--muted); font-size: 14px; line-height: 1.5; margin-top: 6px; }
+  h1 { font-size: 30px; font-weight: 800; letter-spacing: -.035em; }
+  h2 { font-size: 21px; font-weight: 700; letter-spacing: -.025em; }
+  .sub { color: var(--muted); font-size: 14.5px; line-height: 1.55; margin-top: 8px; }
 
   input, select {
     width: 100%; background: var(--card); color: var(--text);
-    border: 1.5px solid var(--line); border-radius: 14px;
-    padding: 14px 16px; font-size: 16px; font-family: inherit;
-    outline: none; transition: border-color .2s;
+    border: 1.5px solid var(--line); border-radius: 16px;
+    padding: 15px 16px; font-size: 16px; font-family: inherit;
+    outline: none; transition: border-color .2s, box-shadow .2s;
   }
-  input:focus, select:focus { border-color: var(--indigo); }
+  input:focus, select:focus { border-color: var(--indigo); box-shadow: 0 0 0 4px var(--indigo-soft); }
   input::placeholder { color: var(--muted); }
 
   .btn {
-    width: 100%; padding: 15px; border-radius: 14px; border: none;
+    width: 100%; padding: 16px; border-radius: 999px; border: none;
     font-family: inherit; font-size: 16px; font-weight: 700;
     cursor: pointer; transition: opacity .15s, transform .1s;
   }
-  .btn:active { transform: scale(.98); opacity: .85; }
-  .btn-primary { background: var(--indigo); color: #fff; }
-  .btn-ghost { background: transparent; border: 1.5px solid var(--line); color: var(--muted); }
+  .btn:active { transform: scale(.98); opacity: .9; }
+  .btn-primary { background: var(--text); color: var(--bg); }
+  .btn-ghost { background: transparent; border: 1.5px solid var(--line); color: var(--text); }
 
   .stack { display: flex; flex-direction: column; gap: 12px; }
 
-  .brand { font-size: 32px; font-weight: 900; letter-spacing: -.04em; text-align: center; margin-bottom: 4px; }
+  .brand { font-size: 34px; font-weight: 900; letter-spacing: -.045em; text-align: center; margin-bottom: 4px; }
   .brand span { color: var(--amber); }
-  .tagline { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 40px; }
+  .tagline { text-align: center; color: var(--muted); font-size: 14.5px; margin-bottom: 44px; }
 
-  .btn-big-wrap { display: flex; justify-content: center; margin: 28px 0 20px; }
+  .btn-big-wrap { display: flex; justify-content: center; margin: 30px 0 20px; }
   .btn-big {
-    width: 170px; height: 170px; border-radius: 50%; border: none;
-    cursor: pointer; font-family: inherit; font-weight: 700; font-size: 15px;
+    width: 176px; height: 176px; border-radius: 50%; border: 1px solid var(--line);
+    cursor: pointer; font-family: inherit; font-weight: 700; font-size: 15.5px;
     line-height: 1.4; color: var(--text); transition: all .4s ease;
-    background: radial-gradient(circle at 50% 40%, #262339, #1c1a2b);
-    box-shadow: 0 14px 40px -16px rgba(0,0,0,.9);
+    background: radial-gradient(circle at 50% 34%, #ffffff, #f1efe9);
+    box-shadow: 0 16px 36px -20px rgba(45,38,28,.45);
     white-space: pre-line;
   }
-  .btn-big.pending { background: radial-gradient(circle at 50% 40%, #2e2b50, #222040); color: var(--indigo); box-shadow: inset 0 2px 14px rgba(0,0,0,.4); }
-  .btn-big.on { background: radial-gradient(circle at 50% 38%, var(--amber-soft), var(--amber)); color: #181522; box-shadow: 0 0 60px 4px rgba(255,188,92,.5); }
-  .btn-big.heads_up { background: radial-gradient(circle at 50% 38%, #9fb7ff, #7090e0); color: #101a2e; box-shadow: 0 0 40px 4px rgba(159,183,255,.4); }
+  .btn-big.pending { background: radial-gradient(circle at 50% 40%, #f3f1f9, #e7e4f2); color: var(--indigo); border-color: #ded9ec; box-shadow: 0 14px 30px -18px rgba(123,118,166,.5); }
+  .btn-big.on { background: radial-gradient(circle at 50% 38%, #f9e8dd, #eaa886); color: #5a3220; border-color: #eec3ac; box-shadow: 0 0 44px 2px rgba(219,139,102,.4); }
+  .btn-big.heads_up { background: radial-gradient(circle at 50% 38%, #eaf1fb, #cdddf3); color: #38496a; border-color: #d5e2f4; box-shadow: 0 0 40px 2px rgba(127,155,207,.35); }
   .btn-big:active { transform: scale(.96); }
 
   /* gentle pendulum sway on the swing while you're waiting for friends */
@@ -85,42 +94,43 @@
     #vibe-img.swinging { animation: none; }
   }
 
-  .status-card { border-radius: 16px; padding: 16px; border: 1px solid var(--line); background: #1a1729; }
-  .status-card.on { background: #2c2012; border-color: #4a3618; }
-  .status-card.heads_up { background: #161d30; border-color: #27314e; }
-  .status-card h3 { font-size: 15px; margin-bottom: 6px; }
-  .status-card p { font-size: 13px; color: var(--muted); line-height: 1.5; }
-  .participants { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
-  .participant { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-  .av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 11px; color: #181522; flex-shrink: 0; }
+  .status-card { border-radius: 18px; padding: 16px 18px; border: 1px solid var(--line); background: var(--card); }
+  .status-card.on { background: #fbf1ea; border-color: #f2ddcf; }
+  .status-card.heads_up { background: #eff4fb; border-color: #dde7f6; }
+  .status-card h3 { font-size: 15.5px; margin-bottom: 6px; }
+  .status-card p { font-size: 13.5px; color: var(--muted); line-height: 1.55; }
+  .participants { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .participant { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+  .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 12px; color: #33302b; flex-shrink: 0; }
 
   .group-item {
-    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-    padding: 14px 16px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: border-color .2s;
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+    padding: 15px 16px; cursor: pointer; display: flex; align-items: center; gap: 13px;
+    transition: transform .1s; box-shadow: var(--shadow);
   }
-  .group-item:active { border-color: var(--indigo); }
-  .group-name { font-weight: 600; font-size: 15px; }
-  .group-members { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .group-item:active { transform: scale(.99); }
+  .group-name { font-weight: 700; font-size: 15px; }
+  .group-members { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 
-  .or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+  .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; }
   .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 
-  .topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
-  .back { background: transparent; border: none; color: var(--muted); font-size: 22px; cursor: pointer; padding: 0; line-height: 1; }
+  .topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 30px; }
+  .back { background: transparent; border: none; color: var(--text); font-size: 22px; cursor: pointer; padding: 0; line-height: 1; }
   .topbar-title { font-weight: 700; font-size: 17px; flex: 1; }
 
   .options-row { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
-  .tog { display: flex; align-items: center; gap: 10px; background: transparent; border: 1px solid var(--line); border-radius: 13px; padding: 12px; cursor: pointer; text-align: left; color: var(--text); font-family: inherit; width: 100%; }
-  .tog.on { border-color: var(--rose); background: rgba(255,158,122,.1); }
-  .tog-box { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #494563; display: grid; place-items: center; color: #181522; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+  .tog { display: flex; align-items: center; gap: 11px; background: var(--card); border: 1px solid var(--line); border-radius: 15px; padding: 13px; cursor: pointer; text-align: left; color: var(--text); font-family: inherit; width: 100%; }
+  .tog.on { border-color: var(--rose); background: #fbf1ea; }
+  .tog-box { width: 21px; height: 21px; border-radius: 7px; border: 1.5px solid #d8d2c9; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 800; flex-shrink: 0; }
   .tog.on .tog-box { background: var(--rose); border-color: var(--rose); }
-  .tog small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .tog small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; }
 
   .invite-code { text-align: center; }
-  .code-box { font-size: 13px; font-weight: 700; letter-spacing: .05em; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin: 10px 0; cursor: pointer; word-break: break-all; }
+  .code-box { font-size: 13px; font-weight: 700; letter-spacing: .05em; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin: 10px 0; cursor: pointer; word-break: break-all; box-shadow: var(--shadow); }
   .code-hint { font-size: 12px; color: var(--muted); }
 
-  .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: #1e1b2b; border: 1px solid var(--line); color: var(--text); padding: 12px 20px; border-radius: 12px; font-size: 13px; white-space: nowrap; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 99; }
+  .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 13px 22px; border-radius: 999px; font-size: 13.5px; white-space: nowrap; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 99; box-shadow: 0 14px 30px -12px rgba(45,38,28,.45); }
   .toast.show { opacity: 1; }
 
   .loader { text-align: center; color: var(--muted); font-size: 14px; padding: 40px 0; }
@@ -128,7 +138,7 @@
   .msg { display: flex; flex-direction: column; gap: 2px; }
   .msg-name { font-size: 11px; font-weight: 700; color: var(--muted); }
   .msg-name.mine { color: var(--indigo); text-align: right; }
-  .msg-bubble { font-size: 14px; line-height: 1.4; background: #2a2740; border-radius: 12px; padding: 8px 12px; max-width: 85%; word-break: break-word; }
+  .msg-bubble { font-size: 14px; line-height: 1.45; background: #f0ede7; border-radius: 14px; padding: 9px 13px; max-width: 85%; word-break: break-word; }
   .msg.is-mine { align-items: flex-end; }
   .msg.is-mine .msg-bubble { background: var(--indigo); color: #fff; }
 </style>
@@ -189,14 +199,42 @@
     <p class="sub">Pick a group to hang with.</p>
   </div>
   <div id="groups-list" class="stack"></div>
-<div id="notif-banner" style="display:none; margin-top:16px; background:#1e1b2b; border:1px solid #2d2a42; border-radius:14px; padding:14px 16px;">
+<div id="notif-banner" style="display:none; margin-top:16px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px 16px; box-shadow:var(--shadow);">
     <p style="font-size:13px; color:var(--muted); margin-bottom:10px;">🔔 Enable notifications so you get alerted when friends are down.</p>
     <button class="btn btn-primary" style="font-size:14px; padding:11px;" onclick="enablePush()">Enable notifications</button>
   </div>
+  <button class="btn" style="margin-top:16px; background:var(--amber-soft); color:#7a3f22; border:1.5px solid #eecdba;" onclick="openOneOnOne()">🤝 Hang 1-on-1 with a friend</button>
+
   <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px;">
     <div class="or">or</div>
     <button class="btn btn-primary" onclick="show('screen-create-group')">Create a group</button>
     <button class="btn btn-ghost" onclick="show('screen-join-group')">Join with a code</button>
+  </div>
+</div>
+
+<!-- 1-on-1 screen -->
+<div id="screen-oneonone" class="screen">
+  <div class="topbar">
+    <button class="back" onclick="leaveOneOnOne()">←</button>
+    <span class="topbar-title">Hang 1-on-1</span>
+  </div>
+
+  <p class="sub" style="margin-bottom:8px;">Pick friends you're open to. You only match if you both picked each other — nobody sees you're down otherwise.</p>
+
+  <div class="btn-big-wrap">
+    <button class="btn-big" id="oo-btn" onclick="toggleOneOnOne()">I'm down&#10;1-on-1</button>
+  </div>
+
+  <div id="oo-status"></div>
+
+  <div style="margin-top:22px;">
+    <div style="font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; margin-bottom:10px;">Your friends</div>
+    <div id="oo-friends"></div>
+  </div>
+
+  <div style="margin-top:16px; display:flex; gap:8px;">
+    <input id="oo-add-code" type="text" placeholder="Add a friend by their code" onkeydown="if(event.key==='Enter')addFriendByCode()" />
+    <button class="btn btn-primary" style="width:auto; padding:0 18px;" onclick="addFriendByCode()">Add</button>
   </div>
 </div>
 
@@ -338,7 +376,7 @@ let waitingImgOk = false;
   im.src = '/waiting.png';
 })();
 
-const COLORS = ['#7d75c4','#ffbc5c','#ff9e7a','#9fb7ff','#7ed9a8'];
+const COLORS = ['#cbc4ee','#f4c6aa','#b7e0c9','#bdd1f4','#eec3d5'];
 
 function save() { localStorage.setItem('sponty_user', JSON.stringify(me)); }
 function load() { try { me = JSON.parse(localStorage.getItem('sponty_user')); } catch { me = null; } }
@@ -663,6 +701,124 @@ function doLogout() {
   localStorage.removeItem('sponty_user');
   me = null;
   show('screen-welcome');
+}
+
+/* ---------------------------- 1-on-1 ---------------------------- */
+let ooSelected = new Set();   // friends I've picked (local staging)
+let ooDown = false;           // am I currently "down for 1-on-1"?
+let ooFriends = [];           // my friends list
+let ooMatches = [];           // friends I'm mutually matched with
+let ooPollTimer = null;
+
+function openOneOnOne() {
+  ooSelected = new Set();
+  ooDown = false;
+  ooMatches = [];
+  document.getElementById('oo-add-code').value = '';
+  document.getElementById('oo-status').innerHTML = '';
+  show('screen-oneonone');
+  loadFriends();
+  pollOneOnOne();
+  if (ooPollTimer) clearInterval(ooPollTimer);
+  ooPollTimer = setInterval(pollOneOnOne, 5000);
+}
+
+function leaveOneOnOne() {
+  if (ooPollTimer) clearInterval(ooPollTimer);
+  ooPollTimer = null;
+  loadGroups();
+}
+
+async function loadFriends() {
+  const list = await api('GET', `/api/users/${me.id}/friends`);
+  ooFriends = Array.isArray(list) ? list : [];
+  renderFriends();
+}
+
+function renderFriends() {
+  const box = document.getElementById('oo-friends');
+  if (!box) return;
+  if (ooFriends.length === 0) {
+    box.innerHTML = `<p style="color:var(--muted);font-size:13px;line-height:1.5;">No friends yet — add one by their code below. Friends find their own code under "My account".</p>`;
+    return;
+  }
+  const matchIds = new Set(ooMatches.map(m => m.id));
+  box.innerHTML = ooFriends.map((f, i) => {
+    const sel = ooSelected.has(f.id);
+    const matched = matchIds.has(f.id);
+    return `<div onclick="toggleFriend('${f.id}')" style="display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--card);border:1.5px solid ${sel ? 'var(--amber)' : 'var(--line)'};border-radius:14px;padding:11px 14px;margin-bottom:8px;">
+      <div class="av" style="background:${COLORS[i%COLORS.length]}">${esc((f.name||'?')[0].toUpperCase())}</div>
+      <span style="font-size:15px;font-weight:600;flex:1;">${esc(f.name)}</span>
+      ${matched ? '<span style="font-size:12px;color:var(--green);font-weight:700;">matched ✨</span>' : ''}
+      <span style="width:22px;height:22px;border-radius:7px;border:2px solid ${sel?'var(--amber)':'var(--line)'};background:${sel?'var(--amber)':'transparent'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;">${sel?'✓':''}</span>
+    </div>`;
+  }).join('');
+}
+
+async function toggleFriend(id) {
+  if (ooSelected.has(id)) ooSelected.delete(id); else ooSelected.add(id);
+  renderFriends();
+  if (ooDown) {
+    const status = await api('POST', `/api/users/${me.id}/one-on-one`, { selectedIds: [...ooSelected] });
+    applyOoStatus(status);
+  }
+}
+
+async function addFriendByCode() {
+  const input = document.getElementById('oo-add-code');
+  const code = input.value.trim();
+  if (!code) return;
+  const res = await api('POST', `/api/users/${me.id}/friends`, { friendCode: code });
+  if (res.ok) { input.value = ''; toast(`Added ${res.friend.name} 🙌`); loadFriends(); }
+  else toast(res.error || 'Could not add friend');
+}
+
+async function toggleOneOnOne() {
+  if (ooDown) {
+    await api('DELETE', `/api/users/${me.id}/one-on-one`);
+    ooDown = false;
+    applyOoStatus({ down: false, selected: [...ooSelected], matches: [] });
+  } else {
+    if (ooSelected.size === 0) return toast('Pick at least one friend first');
+    const status = await api('POST', `/api/users/${me.id}/one-on-one`, { selectedIds: [...ooSelected] });
+    ooDown = true;
+    applyOoStatus(status);
+  }
+}
+
+async function pollOneOnOne() {
+  if (!me) return;
+  const status = await api('GET', `/api/users/${me.id}/one-on-one`);
+  if (status && typeof status.down === 'boolean') applyOoStatus(status);
+}
+
+function applyOoStatus(status) {
+  if (!status) return;
+  ooDown = !!status.down;
+  if (ooDown) ooSelected = new Set(status.selected || []); // server is source of truth while down
+  ooMatches = status.matches || [];
+  renderOneOnOne(status);
+  renderFriends();
+}
+
+function renderOneOnOne(status) {
+  const btn = document.getElementById('oo-btn');
+  const area = document.getElementById('oo-status');
+  const matches = status.matches || [];
+  btn.className = 'btn-big';
+  if (matches.length) {
+    btn.classList.add('on');
+    btn.textContent = "It's on! ✨";
+    const names = matches.map(m => esc(m.name)).join(', ');
+    area.innerHTML = `<div class="status-card on"><h3>Just you two 🎉</h3><p>${names} ${matches.length>1?'are':'is'} also down for a 1-on-1 — go make plans!</p></div><div style="margin-top:12px;"><button class="btn btn-ghost" onclick="toggleOneOnOne()">Stop</button></div>`;
+  } else if (ooDown) {
+    btn.classList.add('pending');
+    btn.textContent = 'Waiting…';
+    area.innerHTML = `<div class="status-card"><h3>You're quietly down 🤫</h3><p>Nobody knows yet. You'll be matched the moment a friend you picked is also down for you.</p></div><div style="margin-top:12px;"><button class="btn btn-ghost" onclick="toggleOneOnOne()">Cancel</button></div>`;
+  } else {
+    btn.textContent = "I'm down\n1-on-1";
+    area.innerHTML = '';
+  }
 }
 
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
