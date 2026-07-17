@@ -13,6 +13,7 @@
 <link rel="manifest" href="/manifest.json" />
 <link rel="apple-touch-icon" href="/icon.png" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <style>
   :root {
     --bg: #f7f6f3;          /* warm off-white */
@@ -267,7 +268,7 @@
   </div>
 
   <div style="margin-top:16px; display:flex; gap:8px;">
-    <input id="oo-add-code" type="text" placeholder="Add a friend by their code" onkeydown="if(event.key==='Enter')addFriendByCode()" />
+    <input id="oo-add-code" type="text" placeholder="Paste a friend's code or link" onkeydown="if(event.key==='Enter')addFriendByCode()" />
     <button class="btn btn-primary" style="width:auto; padding:0 18px;" onclick="addFriendByCode()">Add</button>
   </div>
 </div>
@@ -321,7 +322,7 @@
   <div class="topbar">
     <button class="back" onclick="leaveGroup()">←</button>
     <span class="topbar-title" id="group-title"></span>
-    <button class="btn-ghost btn" style="width:auto; padding:7px 12px; font-size:12px;" onclick="showGroupCode()">Invite</button>
+    <button class="btn-ghost btn" style="width:auto; padding:7px 12px; font-size:12px;" onclick="showGroupInvite()">Invite</button>
   </div>
 
   <div id="members-row" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px;"></div>
@@ -360,13 +361,12 @@
     <button class="back" onclick="show('screen-groups')">←</button>
     <span class="topbar-title">Your account</span>
   </div>
-  <div style="flex:1; display:flex; flex-direction:column; gap:16px;">
-    <p class="sub">This is your friend code — share it so friends can add you for 1-on-1 hangs. You sign in with your email, so there's nothing here you need to memorise.</p>
-    <div class="invite-code">
-      <div class="code-box" id="account-code-display" onclick="copyAccountCode()"></div>
-      <p class="code-hint">Tap to copy</p>
-    </div>
-    <button class="btn btn-primary" onclick="copyAccountCode()">Copy friend code</button>
+  <div style="flex:1; display:flex; flex-direction:column; gap:18px; align-items:center; text-align:center;">
+    <p class="sub">Share your invite so friends can add you for 1-on-1 hangs — or let them scan the QR.</p>
+    <div id="friend-qr" style="background:#fff; padding:14px; border-radius:20px; border:1px solid var(--line); box-shadow:var(--shadow); line-height:0;"></div>
+    <button class="btn btn-primary" onclick="shareFriendInvite()">Share my invite</button>
+    <button class="btn btn-ghost" onclick="copyFriendLink()">Copy link</button>
+    <div style="flex:1;"></div>
     <button class="btn btn-ghost" onclick="doLogout()">Log out</button>
   </div>
 </div>
@@ -377,13 +377,11 @@
     <button class="back" onclick="show('screen-group')">←</button>
     <span class="topbar-title">Invite friends</span>
   </div>
-  <div style="flex:1; display:flex; flex-direction:column; gap:16px;">
-    <p class="sub">Share this code with friends so they can join the group.</p>
-    <div class="invite-code">
-      <div class="code-box" id="group-code-display" onclick="copyGroupCode()"></div>
-      <p class="code-hint">Tap to copy</p>
-    </div>
-    <button class="btn btn-primary" onclick="copyGroupCode()">Copy code</button>
+  <div style="flex:1; display:flex; flex-direction:column; gap:18px; align-items:center; text-align:center;">
+    <p class="sub" id="invite-sub">Share the link so friends can join — or let them scan the QR.</p>
+    <div id="invite-qr" style="background:#fff; padding:14px; border-radius:20px; border:1px solid var(--line); box-shadow:var(--shadow); line-height:0;"></div>
+    <button class="btn btn-primary" onclick="shareGroupInvite()">Share invite link</button>
+    <button class="btn btn-ghost" onclick="copyGroupLink()">Copy link</button>
   </div>
 </div>
 
@@ -422,6 +420,15 @@ const sb = (window.supabase && window.supabase.createClient)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
   : null;
 let pendingEmail = '';
+
+// Grab a ?join=<group> / ?add=<user> invite from the URL, then clean the address bar.
+let pendingInvite = null;
+(function captureInvite() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('join')) pendingInvite = { type: 'join', id: p.get('join') };
+  else if (p.get('add')) pendingInvite = { type: 'add', id: p.get('add') };
+  if (pendingInvite) history.replaceState({}, '', location.pathname);
+})();
 
 (async function boot() {
   try {
@@ -548,17 +555,18 @@ async function loadGroups() {
     return;
   }
   if (groups.length === 0) {
-    list.innerHTML = '<p style="color:var(--muted);font-size:14px;text-align:center;padding:20px 0;">No groups yet — create one or join with a code.</p>';
-    return;
+    list.innerHTML = '<p style="color:var(--muted);font-size:14px;text-align:center;padding:20px 0;">No groups yet — create one, or tap a friend\'s invite link.</p>';
+  } else {
+    list.innerHTML = '';
+    groups.forEach((g, i) => {
+      const div = document.createElement('div');
+      div.className = 'group-item';
+      div.innerHTML = `<div style="font-size:22px;background:${COLORS[i%COLORS.length]}22;border-radius:10px;padding:4px 8px;">🛋</div><div><div class="group-name">${esc(g.name)}</div><div class="group-members">${g.memberCount} member${g.memberCount!==1?'s':''}</div></div><div style="margin-left:auto;color:var(--muted);font-size:18px;">›</div>`;
+      div.onclick = () => openGroup(g);
+      list.appendChild(div);
+    });
   }
-  list.innerHTML = '';
-  groups.forEach((g, i) => {
-    const div = document.createElement('div');
-    div.className = 'group-item';
-    div.innerHTML = `<div style="font-size:22px;background:${COLORS[i%COLORS.length]}22;border-radius:10px;padding:4px 8px;">🛋</div><div><div class="group-name">${esc(g.name)}</div><div class="group-members">${g.memberCount} member${g.memberCount!==1?'s':''}</div></div><div style="margin-left:auto;color:var(--muted);font-size:18px;">›</div>`;
-    div.onclick = () => openGroup(g);
-    list.appendChild(div);
-  });
+  if (pendingInvite) processPendingInvite();
 }
 
 async function doCreateGroup() {
@@ -786,20 +794,64 @@ function avatarList(participants) {
   return `<div class="participants">${items}</div>`;
 }
 
-function showAccountCode() {
-  document.getElementById('account-code-display').textContent = me.id;
-  show('screen-account');
+/* ---- elegant invites: tap-to-share links + QR ---- */
+function copyToClip(text) {
+  navigator.clipboard.writeText(text).then(() => toast('Link copied!')).catch(() => toast('Copy failed'));
 }
-function copyAccountCode() {
-  navigator.clipboard.writeText(me.id).then(() => toast('Copied!')).catch(() => { toast('Copy failed — tap the code to select it'); });
+function renderQR(elId, text) {
+  const el = document.getElementById(elId);
+  el.innerHTML = '';
+  if (window.qrcode) {
+    const qr = qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    el.innerHTML = qr.createImgTag(5, 2);
+    const img = el.querySelector('img');
+    if (img) { img.style.width = '210px'; img.style.height = '210px'; img.style.display = 'block'; img.style.imageRendering = 'pixelated'; }
+  } else {
+    el.innerHTML = `<div style="font-size:12px;word-break:break-all;color:var(--muted);line-height:1.4;">${esc(text)}</div>`;
+  }
 }
 
-function showGroupCode() {
-  document.getElementById('group-code-display').textContent = currentGroup.id;
+// group invite
+const groupLink = () => `${location.origin}/?join=${currentGroup.id}`;
+function showGroupInvite() {
+  document.getElementById('invite-sub').textContent = `Share the link so friends can join ${currentGroup.name} — or let them scan the QR.`;
+  renderQR('invite-qr', groupLink());
   show('screen-invite');
 }
-function copyGroupCode() {
-  navigator.clipboard.writeText(currentGroup.id).then(() => toast('Copied!')).catch(() => { toast('Copy failed — tap the code to select it'); });
+async function shareGroupInvite() {
+  const url = groupLink();
+  if (navigator.share) { try { await navigator.share({ title: 'Join my Sponty group', text: `Join "${currentGroup.name}" on Sponty`, url }); } catch (e) {} }
+  else copyToClip(url);
+}
+function copyGroupLink() { copyToClip(groupLink()); }
+
+// friend invite ("add me")
+const friendLink = () => `${location.origin}/?add=${me.id}`;
+function showAccountCode() { renderQR('friend-qr', friendLink()); show('screen-account'); }
+async function shareFriendInvite() {
+  const url = friendLink();
+  if (navigator.share) { try { await navigator.share({ title: 'Add me on Sponty', text: 'Add me on Sponty for spontaneous 1-on-1 hangs', url }); } catch (e) {} }
+  else copyToClip(url);
+}
+function copyFriendLink() { copyToClip(friendLink()); }
+
+// tapping a ?join= / ?add= link drops you straight into joining
+async function processPendingInvite() {
+  if (!pendingInvite || !me) return;
+  const inv = pendingInvite; pendingInvite = null;
+  if (inv.type === 'join') {
+    const g = await api('GET', `/api/groups/${inv.id}`);
+    if (!g || !g.id) return toast('That group invite looks invalid');
+    await api('POST', `/api/groups/${inv.id}/members`, { userId: me.id });
+    toast(`Joined ${g.name} 🎉`);
+    openGroup({ id: g.id, name: g.name });
+  } else if (inv.type === 'add') {
+    if (inv.id === me.id) return toast("That's your own invite link 😄");
+    const res = await api('POST', `/api/users/${me.id}/friends`, { friendCode: inv.id });
+    toast(res.ok ? `Added ${res.friend.name} 🙌` : (res.error || 'Could not add that friend'));
+  }
 }
 
 async function doLogout() {
@@ -872,7 +924,9 @@ async function toggleFriend(id) {
 
 async function addFriendByCode() {
   const input = document.getElementById('oo-add-code');
-  const code = input.value.trim();
+  let code = input.value.trim();
+  const m = code.match(/[?&]add=([^&\s]+)/);   // accept a pasted invite link too
+  if (m) code = decodeURIComponent(m[1]);
   if (!code) return;
   const res = await api('POST', `/api/users/${me.id}/friends`, { friendCode: code });
   if (res.ok) { input.value = ''; toast(`Added ${res.friend.name} 🙌`); loadFriends(); }
