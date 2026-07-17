@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Sponty" />
 <link rel="manifest" href="/manifest.json" />
 <link rel="apple-touch-icon" href="/icon.png" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg: #f7f6f3;          /* warm off-white */
@@ -151,8 +152,8 @@
     <div class="brand">Sponty<span>.</span></div>
     <div class="tagline">Hang with friends, no awkward planning</div>
     <div class="stack">
-      <button class="btn btn-primary" onclick="show('screen-signup')">Get started</button>
-      <button class="btn btn-ghost" onclick="show('screen-login')">I already have an account</button>
+      <button class="btn btn-primary" onclick="show('screen-email')">Continue with email</button>
+      <button class="btn btn-ghost" onclick="show('screen-login')">Use an account code</button>
     </div>
   </div>
 </div>
@@ -169,7 +170,40 @@
       <p class="sub" style="margin-bottom:20px;">This is what your friends will see.</p>
       <input id="signup-name" type="text" placeholder="Your name" autocomplete="given-name" />
     </div>
-    <button class="btn btn-primary" onclick="doSignup()">Continue</button>
+    <button class="btn btn-primary" onclick="submitName()">Continue</button>
+  </div>
+</div>
+
+<!-- email login: enter email -->
+<div id="screen-email" class="screen">
+  <div class="topbar">
+    <button class="back" onclick="show('screen-welcome')">←</button>
+    <span class="topbar-title">Continue with email</span>
+  </div>
+  <div class="stack" style="flex:1;">
+    <div>
+      <h2>What's your email?</h2>
+      <p class="sub" style="margin-bottom:20px;">We'll send a 6-digit code — no password to remember.</p>
+      <input id="email-input" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com" onkeydown="if(event.key==='Enter')emailStart()" />
+    </div>
+    <button class="btn btn-primary" id="email-btn" onclick="emailStart()">Send me a code</button>
+  </div>
+</div>
+
+<!-- email login: enter code -->
+<div id="screen-code" class="screen">
+  <div class="topbar">
+    <button class="back" onclick="show('screen-email')">←</button>
+    <span class="topbar-title">Enter your code</span>
+  </div>
+  <div class="stack" style="flex:1;">
+    <div>
+      <h2>Check your inbox</h2>
+      <p class="sub" style="margin-bottom:20px;">We sent a 6-digit code to <b id="code-email-label"></b>.</p>
+      <input id="code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" onkeydown="if(event.key==='Enter')emailVerify()" style="letter-spacing:.3em; text-align:center; font-size:22px;" />
+    </div>
+    <button class="btn btn-primary" onclick="emailVerify()">Verify</button>
+    <button class="btn btn-ghost" onclick="emailStart()">Resend code</button>
   </div>
 </div>
 
@@ -381,8 +415,25 @@ const COLORS = ['#cbc4ee','#f4c6aa','#b7e0c9','#bdd1f4','#eec3d5'];
 function save() { localStorage.setItem('sponty_user', JSON.stringify(me)); }
 function load() { try { me = JSON.parse(localStorage.getItem('sponty_user')); } catch { me = null; } }
 
-load();
-if (me && me.id) loadGroups();
+/* ---- Supabase auth (passwordless email one-time code) ---- */
+const SUPABASE_URL = 'https://xinuhhvbmaqzrmqdzmsh.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_sEk-FVK5CokaFuR_IqNd0Q_Op8dXBVl';
+const sb = (window.supabase && window.supabase.createClient)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
+  : null;
+let pendingEmail = '';
+
+(async function boot() {
+  try {
+    if (sb) {
+      const { data } = await sb.auth.getSession();
+      if (data && data.session) return finishAuth(data.session.user);
+    }
+  } catch (e) { console.error('auth boot failed', e); }
+  load();                                  // legacy account-code fallback
+  if (me && me.id) return loadGroups();
+  show('screen-welcome');
+})();
 
 function show(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -425,6 +476,56 @@ async function doLogin() {
   enablePush();
 }
 
+/* ---- email one-time-code login ---- */
+async function emailStart() {
+  if (!sb) return toast('Email login is unavailable right now — try an account code');
+  const email = document.getElementById('email-input').value.trim();
+  if (!email || !email.includes('@')) return toast('Enter a valid email');
+  pendingEmail = email;
+  const btn = document.getElementById('email-btn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+  btn.disabled = false; btn.textContent = 'Send me a code';
+  if (error) return toast(error.message || 'Could not send the code');
+  document.getElementById('code-email-label').textContent = email;
+  document.getElementById('code-input').value = '';
+  show('screen-code');
+}
+
+async function emailVerify() {
+  if (!sb) return;
+  const token = document.getElementById('code-input').value.trim();
+  if (token.length < 6) return toast('Enter the 6-digit code');
+  const { data, error } = await sb.auth.verifyOtp({ email: pendingEmail, token, type: 'email' });
+  if (error) return toast(error.message || 'That code is wrong or expired');
+  finishAuth(data.user);
+}
+
+// Called once we have an authenticated Supabase user. New users have no name yet.
+async function finishAuth(user) {
+  const name = user.user_metadata && user.user_metadata.name;
+  me = { id: user.id, name: name || '' };
+  if (!name) return show('screen-signup');   // first time — ask their name
+  await api('POST', '/api/users/upsert', { id: me.id, name: me.name });
+  loadGroups();
+  enablePush();
+}
+
+// Name step — handles both the email flow and the legacy code flow.
+async function submitName() {
+  const name = document.getElementById('signup-name').value.trim();
+  if (!name) return toast('Please enter your name — no name, no hang 😄');
+  if (sb && me && me.id) {
+    try { await sb.auth.updateUser({ data: { name } }); } catch (e) {}
+    me.name = name;
+    await api('POST', '/api/users/upsert', { id: me.id, name });
+    loadGroups();
+    enablePush();
+  } else {
+    doSignup();   // legacy: create a code-based account
+  }
+}
+
 async function loadGroups() {
   show('screen-groups');
   document.getElementById('groups-greeting').textContent = `Hey ${me.name} 👋`;
@@ -433,12 +534,16 @@ async function loadGroups() {
   document.getElementById('notif-banner').style.display = notifNeeded ? 'block' : 'none';
   const list = document.getElementById('groups-list');
   list.innerHTML = '<div class="loader">Loading…</div>';
-  const groups = await api('GET', `/api/users/${me.id}/groups`);
+  let groups = await api('GET', `/api/users/${me.id}/groups`);
+  if (!Array.isArray(groups) && sb && me) {
+    // Backend forgot us after a redeploy — re-register from the persistent session.
+    await api('POST', '/api/users/upsert', { id: me.id, name: me.name || 'Friend' });
+    groups = await api('GET', `/api/users/${me.id}/groups`);
+  }
   if (!Array.isArray(groups)) {
-    // Server doesn't know this user anymore (e.g. after a redeploy) — force fresh signup
     localStorage.removeItem('sponty_user');
     me = null;
-    toast('Your session expired — please sign up again');
+    toast('Your session expired — please sign in again');
     show('screen-welcome');
     return;
   }
@@ -697,7 +802,8 @@ function copyGroupCode() {
   navigator.clipboard.writeText(currentGroup.id).then(() => toast('Copied!')).catch(() => { toast('Copy failed — tap the code to select it'); });
 }
 
-function doLogout() {
+async function doLogout() {
+  try { if (sb) await sb.auth.signOut(); } catch (e) {}
   localStorage.removeItem('sponty_user');
   me = null;
   show('screen-welcome');

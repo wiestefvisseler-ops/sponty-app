@@ -17,6 +17,7 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+  if (url.origin !== self.location.origin) return; // let Supabase / CDN requests pass through
   if (url.pathname.startsWith('/api/')) return;
   e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
 });
