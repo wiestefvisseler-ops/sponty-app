@@ -45,6 +45,15 @@ function createUser({ name }) {
   return u;
 }
 const getUser = (id) => users.get(id) || null;
+// Create-or-update a user with a KNOWN id — used for Supabase-authenticated users,
+// whose id is their Supabase user id rather than a locally generated one.
+function upsertUser({ id, name }) {
+  if (!id) throw new Error('id required');
+  let u = users.get(id);
+  if (!u) { u = { id, name: name ? String(name).trim() : 'Friend' }; users.set(id, u); }
+  else if (name) u.name = String(name).trim();
+  return u;
+}
 function setPushSubscription(userId, subscription) {
   const u = users.get(userId);
   if (!u) return null;
@@ -423,7 +432,7 @@ function cancelOneOnOne(userId) {
 }
 
 module.exports = {
-  createUser, getUser, setPushSubscription,
+  createUser, getUser, upsertUser, setPushSubscription,
   createGroup, getGroup, addMember, listGroupsForUser,
   createSignal, cancelSignal, getUserStatus, debugGroupState,
   getMessages, addMessage, chatAudienceIds, removeMember, resetGroup,

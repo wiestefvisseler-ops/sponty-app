@@ -65,6 +65,16 @@ const routes = [
     }
   }],
 
+  // Register-or-update a Supabase-authenticated user (id = their Supabase user id).
+  ['POST', /^\/api\/users\/upsert$/, async (req, res) => {
+    const b = await readBody(req);
+    try {
+      sendJson(res, 200, store.upsertUser({ id: b.id, name: b.name }));
+    } catch (e) {
+      sendJson(res, 400, { error: e.message });
+    }
+  }],
+
   ['POST', /^\/api\/users\/(?<id>[^/]+)\/push-subscription$/, async (req, res, p) => {
     const b = await readBody(req);
     console.log(`  📲 push-subscription for user ${p.id}: ${b.subscription ? 'received' : 'MISSING'}`);
