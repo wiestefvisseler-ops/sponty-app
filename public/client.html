@@ -183,7 +183,7 @@
   <div class="stack" style="flex:1;">
     <div>
       <h2>What's your email?</h2>
-      <p class="sub" style="margin-bottom:20px;">We'll send a 6-digit code — no password to remember.</p>
+      <p class="sub" style="margin-bottom:20px;">We'll email you a login code — no password to remember.</p>
       <input id="email-input" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com" onkeydown="if(event.key==='Enter')emailStart()" />
     </div>
     <button class="btn btn-primary" id="email-btn" onclick="emailStart()">Send me a code</button>
@@ -199,8 +199,8 @@
   <div class="stack" style="flex:1;">
     <div>
       <h2>Check your inbox</h2>
-      <p class="sub" style="margin-bottom:20px;">We sent a 6-digit code to <b id="code-email-label"></b>.</p>
-      <input id="code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" onkeydown="if(event.key==='Enter')emailVerify()" style="letter-spacing:.3em; text-align:center; font-size:22px;" />
+      <p class="sub" style="margin-bottom:20px;">We sent a login code to <b id="code-email-label"></b>.</p>
+      <input id="code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="Enter code" onkeydown="if(event.key==='Enter')emailVerify()" style="letter-spacing:.2em; text-align:center; font-size:22px;" />
     </div>
     <button class="btn btn-primary" onclick="emailVerify()">Verify</button>
     <button class="btn btn-ghost" onclick="emailStart()">Resend code</button>
@@ -495,7 +495,7 @@ async function emailStart() {
 async function emailVerify() {
   if (!sb) return;
   const token = document.getElementById('code-input').value.trim();
-  if (token.length < 6) return toast('Enter the 6-digit code');
+  if (token.length < 6) return toast('Enter the code from your email');
   const { data, error } = await sb.auth.verifyOtp({ email: pendingEmail, token, type: 'email' });
   if (error) return toast(error.message || 'That code is wrong or expired');
   finishAuth(data.user);
