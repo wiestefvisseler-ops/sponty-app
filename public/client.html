@@ -366,6 +366,8 @@
       <span>1-on-1 is fine<small>Match even if it's just one other person</small></span>
     </button>
   </div>
+
+  <button class="btn btn-ghost" style="margin-top:22px; color:var(--muted); font-size:13px;" onclick="quitGroup()">Leave group</button>
 </div>
 
 <!-- account code -->
@@ -654,6 +656,14 @@ async function removeMember(userId) {
   const res = await api('DELETE', `/api/groups/${currentGroup.id}/members/${userId}?requesterId=${me.id}`);
   if (res.ok) loadMembers();
   else toast(res.error || 'Could not remove member');
+}
+
+async function quitGroup() {
+  if (!confirm(`Leave "${currentGroup.name}"? You won't see it again unless someone re-invites you.`)) return;
+  const res = await api('DELETE', `/api/groups/${currentGroup.id}/members/${me.id}?requesterId=${me.id}`);
+  if (!res.ok) return toast(res.error || 'Could not leave the group');
+  toast('You left the group');
+  leaveGroup();   // existing helper: stops polling + returns to the groups list
 }
 
 function leaveGroup() {
