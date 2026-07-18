@@ -77,6 +77,32 @@ function removeMember(groupId, userId, requesterId) {
   g.memberIds.delete(userId);
   return { ok: true };
 }
+
+// Leave a group yourself: drop your signal, remove you from any live hang,
+// hand off ownership if you owned it, and delete the group if you were the last.
+function leaveGroup(groupId, userId) {
+  const g = groups.get(groupId);
+  if (!g) return { ok: false, error: 'group not found' };
+  if (!g.memberIds.has(userId)) return { ok: false, error: 'not a member' };
+
+  g.memberIds.delete(userId);
+  for (const s of signals.values()) {
+    if (s.groupId === groupId && s.userId === userId && !s.cancelled) s.cancelled = true;
+  }
+  const ev = events.get(groupId);
+  if (ev) ev.participantUserIds.delete(userId);
+
+  if (g.memberIds.size === 0) {              // last one out -> delete the group
+    groups.delete(groupId);
+    events.delete(groupId);
+    for (const id of [...signals.keys()]) if (signals.get(id).groupId === groupId) signals.delete(id);
+    messages.delete(`${groupId}:${todayKey()}`);
+    return { ok: true, deleted: true };
+  }
+  if (g.ownerId === userId) g.ownerId = [...g.memberIds][0];  // hand ownership over
+  if (activeEvent(groupId) && activeSignals(groupId).length < 2) resetGroup(groupId);
+  return { ok: true };
+}
 function addMember(groupId, userId) {
   const g = groups.get(groupId);
   if (!g) return null;
@@ -462,7 +488,7 @@ module.exports = {
   createUser, getUser, upsertUser, setPushSubscription,
   createGroup, getGroup, addMember, listGroupsForUser,
   createSignal, cancelSignal, getUserStatus, debugGroupState,
-  getMessages, addMessage, chatAudienceIds, removeMember, resetGroup,
+  getMessages, addMessage, chatAudienceIds, removeMember, leaveGroup, resetGroup,
   addFriend, listFriends, removeFriend,
   setOneOnOne, cancelOneOnOne, getOneOnOneStatus,
 };

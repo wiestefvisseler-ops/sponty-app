@@ -139,8 +139,10 @@ const routes = [
 
   ['DELETE', /^\/api\/groups\/(?<id>[^/]+)\/members\/(?<userId>[^/]+)$/, async (req, res, p, q) => {
     const requesterId = q.get('requesterId');
-    const result = store.removeMember(p.id, p.userId, requesterId);
-    result.ok ? sendJson(res, 200, { ok: true }) : sendJson(res, 403, result);
+    const result = (p.userId === requesterId)
+      ? store.leaveGroup(p.id, p.userId)                  // leaving yourself
+      : store.removeMember(p.id, p.userId, requesterId);  // owner removing someone else
+    result.ok ? sendJson(res, 200, result) : sendJson(res, 400, result);
   }],
 
   ['POST', /^\/api\/groups\/(?<id>[^/]+)\/members$/, async (req, res, p) => {
