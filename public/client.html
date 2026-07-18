@@ -143,9 +143,21 @@
   .msg-bubble { font-size: 14px; line-height: 1.45; background: #f0ede7; border-radius: 14px; padding: 9px 13px; max-width: 85%; word-break: break-word; }
   .msg.is-mine { align-items: flex-end; }
   .msg.is-mine .msg-bubble { background: var(--indigo); color: #fff; }
+
+  /* animated "It's Sponty" logo reveal on every app open */
+  #splash { position: fixed; inset: 0; z-index: 999; display: flex; align-items: center; justify-content: center; background: var(--bg); transition: opacity .45s ease; }
+  #splash.hide { opacity: 0; pointer-events: none; }
+  #splash .logo-anim { font-size: clamp(36px, 14vw, 64px); font-weight: 900; letter-spacing: -.045em; color: var(--text); white-space: nowrap; animation: splashUp .7s cubic-bezier(.2,.8,.25,1) both; }
+  #splash .logo-anim .hi { display: inline-block; color: #1c1a17; transition: color .45s ease; }
+  #splash .logo-anim .hi.lit { color: #db8b66; animation: hiPop .5s cubic-bezier(.2,.9,.3,1.3); }
+  @keyframes splashUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  @keyframes hiPop { 0% { transform: scale(1); } 45% { transform: scale(1.16); } 100% { transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { #splash .logo-anim { animation: none; } #splash .logo-anim .hi { transition: none; } #splash .logo-anim .hi.lit { animation: none; } }
 </style>
 </head>
 <body>
+
+<div id="splash"><div class="logo-anim"><span class="hi">It's</span> Sp<span class="hi">on</span>ty</div></div>
 
 <!-- welcome -->
 <div id="screen-welcome" class="screen active">
@@ -428,6 +440,16 @@ let pendingInvite = null;
   if (p.get('join')) pendingInvite = { type: 'join', id: p.get('join') };
   else if (p.get('add')) pendingInvite = { type: 'add', id: p.get('add') };
   if (pendingInvite) history.replaceState({}, '', location.pathname);
+})();
+
+// play the "It's Sponty" reveal, then fade the splash away (app loads behind it)
+(function playSplash() {
+  const s = document.getElementById('splash');
+  if (!s) return;
+  const hi = s.querySelectorAll('.hi');
+  setTimeout(() => hi[0] && hi[0].classList.add('lit'), 900);   // "It's" -> coral
+  setTimeout(() => hi[1] && hi[1].classList.add('lit'), 1200);  // "on"   -> coral
+  setTimeout(() => { s.classList.add('hide'); setTimeout(() => s.remove(), 500); }, 2000);
 })();
 
 (async function boot() {
