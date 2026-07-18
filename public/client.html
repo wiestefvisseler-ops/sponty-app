@@ -81,6 +81,7 @@
   .btn-big.on { background: radial-gradient(circle at 50% 38%, #f9e8dd, #eaa886); color: #5a3220; border-color: #eec3ac; box-shadow: 0 0 44px 2px rgba(219,139,102,.4); }
   .btn-big.heads_up { background: radial-gradient(circle at 50% 38%, #eaf1fb, #cdddf3); color: #38496a; border-color: #d5e2f4; box-shadow: 0 0 40px 2px rgba(127,155,207,.35); }
   .btn-big:active { transform: scale(.96); }
+  .btn-big:disabled { opacity: .5; cursor: default; box-shadow: 0 8px 20px -16px rgba(45,38,28,.3); }
 
   /* gentle pendulum sway on the swing while you're waiting for friends */
   #vibe-img { transition: opacity .3s ease; }
@@ -721,6 +722,8 @@ function renderStatus(s) {
   const chat = document.getElementById('chat-area');
 
   btn.className = 'btn-big';
+  btn.disabled = false;
+  btn.style.pointerEvents = '';
   area.innerHTML = '';
 
   const vibeImg = document.getElementById('vibe-img');
@@ -750,6 +753,7 @@ function renderStatus(s) {
   } else if (s.status === 'on') {
     btn.classList.add('on');
     btn.textContent = "It's on! ✨";
+    btn.style.pointerEvents = 'none';   // locked in — leave via the button below, not by tapping this
     opts.style.display = 'none';
     const others = (s.participants||[]).filter(p => p.userId !== me.id);
     const names = others.map(p => p.name).join(', ');
@@ -763,6 +767,16 @@ function renderStatus(s) {
     const time = s.earliestFrom ? ` from ${s.earliestFrom}` : '';
     area.innerHTML = `<div class="status-card heads_up"><h3>Some friends are hanging 👀</h3><p>Join them${time} — tap below to join the hang.</p><button class="btn btn-primary" style="margin-top:12px;" onclick="joinHang()">Join this hang</button></div>`;
     showChat();
+  }
+
+  // Already out tonight somewhere else -> deactivate this group's "I'm down" button.
+  if (s.lockedElsewhere && s.status !== 'on') {
+    btn.disabled = true;
+    btn.classList.remove('heads_up', 'pending');
+    btn.textContent = "I'm down\nto hang";
+    opts.style.display = 'none';
+    chat.style.display = 'none';
+    area.innerHTML = `<div class="status-card"><h3>You're already out tonight 🎉</h3><p>You're matched ${esc(s.lockedLabel || 'elsewhere')}. Wrap that up before starting another hang.</p></div>`;
   }
 }
 
@@ -888,6 +902,7 @@ let ooSelected = new Set();   // friends I've picked (local staging)
 let ooDown = false;           // am I currently "down for 1-on-1"?
 let ooFriends = [];           // my friends list
 let ooMatches = [];           // friends I'm mutually matched with
+let ooLocked = false;         // matched (1-on-1) or committed to a group hang -> lock controls
 let ooPollTimer = null;
 
 function openOneOnOne() {
@@ -926,7 +941,8 @@ function renderFriends() {
   box.innerHTML = ooFriends.map((f, i) => {
     const sel = ooSelected.has(f.id);
     const matched = matchIds.has(f.id);
-    return `<div onclick="toggleFriend('${f.id}')" style="display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--card);border:1.5px solid ${sel ? 'var(--amber)' : 'var(--line)'};border-radius:14px;padding:11px 14px;margin-bottom:8px;">
+    const click = ooLocked ? '' : `onclick="toggleFriend('${f.id}')"`;
+    return `<div ${click} style="display:flex;align-items:center;gap:10px;cursor:${ooLocked?'default':'pointer'};opacity:${ooLocked && !matched ? '.5' : '1'};background:var(--card);border:1.5px solid ${sel ? 'var(--amber)' : 'var(--line)'};border-radius:14px;padding:11px 14px;margin-bottom:8px;">
       <div class="av" style="background:${COLORS[i%COLORS.length]}">${esc((f.name||'?')[0].toUpperCase())}</div>
       <span style="font-size:15px;font-weight:600;flex:1;">${esc(f.name)}</span>
       ${matched ? '<span style="font-size:12px;color:var(--green);font-weight:700;">matched ✨</span>' : ''}
@@ -936,6 +952,7 @@ function renderFriends() {
 }
 
 async function toggleFriend(id) {
+  if (ooLocked) return;   // can't change selection once matched / committed
   if (ooSelected.has(id)) ooSelected.delete(id); else ooSelected.add(id);
   renderFriends();
   if (ooDown) {
@@ -979,6 +996,7 @@ function applyOoStatus(status) {
   ooDown = !!status.down;
   if (ooDown) ooSelected = new Set(status.selected || []); // server is source of truth while down
   ooMatches = status.matches || [];
+  ooLocked = (ooMatches.length > 0) || !!status.lockedByGroup;
   renderOneOnOne(status);
   renderFriends();
 }
@@ -988,11 +1006,18 @@ function renderOneOnOne(status) {
   const area = document.getElementById('oo-status');
   const matches = status.matches || [];
   btn.className = 'btn-big';
+  btn.disabled = false;
+  btn.style.pointerEvents = '';
   if (matches.length) {
     btn.classList.add('on');
     btn.textContent = "It's on! ✨";
+    btn.style.pointerEvents = 'none';   // locked in — leave via Stop
     const names = matches.map(m => esc(m.name)).join(', ');
     area.innerHTML = `<div class="status-card on"><h3>Just you two 🎉</h3><p>${names} ${matches.length>1?'are':'is'} also down for a 1-on-1 — go make plans!</p></div><div style="margin-top:12px;"><button class="btn btn-ghost" onclick="toggleOneOnOne()">Stop</button></div>`;
+  } else if (status.lockedByGroup) {
+    btn.disabled = true;
+    btn.textContent = "I'm down\n1-on-1";
+    area.innerHTML = `<div class="status-card"><h3>You're already out tonight 🎉</h3><p>You're matched in ${esc(status.lockedByGroup)}. Wrap that up before starting a 1-on-1.</p></div>`;
   } else if (ooDown) {
     btn.classList.add('pending');
     btn.textContent = 'Waiting…';
