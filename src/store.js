@@ -258,6 +258,22 @@ function resetGroup(groupId) {
 }
 
 /* -------------------- privacy-safe per-user view ------------------ */
+// A user's current live commitment, if any: a 1-on-1 match takes priority, else
+// the first group where they're a live participant. Used to lock the "I'm down"
+// buttons everywhere once someone is already out for the night.
+function activeMatch(userId) {
+  const oo = oneOnOneMatches(userId);
+  if (oo.length) return { type: 'oneonone', friendName: (users.get(oo[0]) || {}).name || 'a friend' };
+  for (const g of groups.values()) {
+    if (!g.memberIds.has(userId)) continue;
+    const ev = activeEvent(g.id);
+    if (ev && ev.participantUserIds.has(userId) && activeSignals(g.id).some((s) => s.userId === userId)) {
+      return { type: 'group', groupId: g.id, groupName: g.name };
+    }
+  }
+  return null;
+}
+
 function getUserStatus(groupId, userId) {
   const g = groups.get(groupId);
   if (!g) return { status: 'idle' };
@@ -276,6 +292,14 @@ function getUserStatus(groupId, userId) {
 
   // Your OWN signal id is safe to return (lets the client cancel it).
   if (mySignal) out.signalId = mySignal.id;
+
+  // If you're already matched somewhere ELSE, tell the client so it can
+  // deactivate the "I'm down" button here (you can't be in two hangs at once).
+  const am = activeMatch(userId);
+  if (am && out.status !== 'on') {
+    out.lockedElsewhere = true;
+    out.lockedLabel = am.type === 'oneonone' ? `with ${am.friendName}` : `in ${am.groupName}`;
+  }
   return out;
 }
 
@@ -396,10 +420,13 @@ function oneOnOneMatches(userId) {
 
 function getOneOnOneStatus(userId) {
   const mine = activeOneOnOne(userId);
+  const am = activeMatch(userId);
   return {
     down: !!mine,
     selected: mine ? [...mine.selected] : [],
     matches: oneOnOneMatches(userId).map((id) => ({ id, name: (users.get(id) || {}).name || 'Friend' })),
+    // committed via a GROUP hang -> lock the 1-on-1 "I'm down" button too
+    lockedByGroup: am && am.type === 'group' ? am.groupName : null,
   };
 }
 
