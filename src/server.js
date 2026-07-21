@@ -18,6 +18,24 @@ const { WebPushNotifier, PUBLIC_VAPID_KEY } = require('./notifier');
 const PORT = process.env.PORT || 4000;
 const notifier = new WebPushNotifier();
 
+// Optional: fully delete the Supabase auth user on account deletion. Needs the
+// service_role key (set SUPABASE_URL + SUPABASE_SERVICE_KEY as env vars). Without
+// them we still wipe all app data — we just can't remove the login record.
+const SB_URL = process.env.SUPABASE_URL || '';
+const SB_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
+async function deleteSupabaseUser(userId) {
+  if (!SB_URL || !SB_SERVICE_KEY) return false;
+  try {
+    const r = await fetch(`${SB_URL}/auth/v1/admin/users/${userId}`, {
+      method: 'DELETE',
+      headers: { apikey: SB_SERVICE_KEY, Authorization: `Bearer ${SB_SERVICE_KEY}` },
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 function sendJson(res, status, obj) {
   res.writeHead(status, {
     'Content-Type': 'application/json',
@@ -73,6 +91,14 @@ const routes = [
     } catch (e) {
       sendJson(res, 400, { error: e.message });
     }
+  }],
+
+  // Delete your account: wipe all app data, then (if configured) the Supabase login.
+  ['DELETE', /^\/api\/users\/(?<id>[^/]+)$/, async (req, res, p) => {
+    const result = store.deleteUser(p.id);
+    if (!result.ok) return sendJson(res, 404, result);
+    const authDeleted = await deleteSupabaseUser(p.id);
+    sendJson(res, 200, { ok: true, authDeleted });
   }],
 
   ['POST', /^\/api\/users\/(?<id>[^/]+)\/push-subscription$/, async (req, res, p) => {

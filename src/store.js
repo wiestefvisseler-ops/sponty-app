@@ -103,6 +103,23 @@ function leaveGroup(groupId, userId) {
   if (activeEvent(groupId) && activeSignals(groupId).length < 2) resetGroup(groupId);
   return { ok: true };
 }
+
+// Permanently delete a user: leave every group (with ownership hand-off / empty-
+// group deletion), then drop their signals, friendships, 1-on-1 state and record.
+function deleteUser(userId) {
+  if (!users.has(userId)) return { ok: false, error: 'user not found' };
+  for (const g of [...groups.values()]) {
+    if (g.memberIds.has(userId)) leaveGroup(g.id, userId);
+  }
+  for (const s of signals.values()) if (s.userId === userId) s.cancelled = true;
+  const mine = friends.get(userId);
+  if (mine) for (const fid of mine) { const set = friends.get(fid); if (set) set.delete(userId); }
+  friends.delete(userId);
+  oneOnOne.delete(userId);
+  for (const o of oneOnOne.values()) o.selected.delete(userId);
+  users.delete(userId);
+  return { ok: true };
+}
 function addMember(groupId, userId) {
   const g = groups.get(groupId);
   if (!g) return null;
@@ -488,7 +505,7 @@ module.exports = {
   createUser, getUser, upsertUser, setPushSubscription,
   createGroup, getGroup, addMember, listGroupsForUser,
   createSignal, cancelSignal, getUserStatus, debugGroupState,
-  getMessages, addMessage, chatAudienceIds, removeMember, leaveGroup, resetGroup,
+  getMessages, addMessage, chatAudienceIds, removeMember, leaveGroup, deleteUser, resetGroup,
   addFriend, listFriends, removeFriend,
   setOneOnOne, cancelOneOnOne, getOneOnOneStatus,
 };
