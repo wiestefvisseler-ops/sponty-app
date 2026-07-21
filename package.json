@@ -1,6 +1,6 @@
 {
   "name": "sponty-backend",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Backend + matching engine for Sponty — spontaneous, low-pressure group hangs that stay invisible until enough friends are quietly in.",
   "type": "commonjs",
@@ -10,6 +10,10 @@
     "test": "node test/engine.test.js"
   },
   "dependencies": {
+    "pg": "^8.13.1",
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4"
   }
 }
