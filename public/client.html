@@ -383,6 +383,7 @@
     <button class="btn btn-ghost" onclick="copyFriendLink()">Copy link</button>
     <div style="flex:1;"></div>
     <button class="btn btn-ghost" onclick="doLogout()">Log out</button>
+    <button class="btn btn-ghost" style="color:#b5482f; border-color:#e7cabf; font-size:13px;" onclick="deleteAccount()">Delete account</button>
   </div>
 </div>
 
@@ -904,6 +905,16 @@ async function doLogout() {
   try { if (sb) await sb.auth.signOut(); } catch (e) {}
   localStorage.removeItem('sponty_user');
   me = null;
+  show('screen-welcome');
+}
+
+async function deleteAccount() {
+  if (!confirm('Delete your account for good? This wipes your groups, friends and data — there is no undo.')) return;
+  try { await api('DELETE', `/api/users/${me.id}`); } catch (e) {}
+  try { if (sb) await sb.auth.signOut(); } catch (e) {}
+  localStorage.removeItem('sponty_user');
+  me = null;
+  toast('Your account was deleted');
   show('screen-welcome');
 }
 
