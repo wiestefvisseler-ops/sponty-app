@@ -63,7 +63,7 @@ function readBody(req) {
 
 async function dispatch(notifications) {
   for (const n of notifications) {
-    const user = store.getUser(n.userId);
+    const user = await store.getUser(n.userId);
     if (user) await notifier.send(user, n);
   }
 }
@@ -77,7 +77,7 @@ const routes = [
   ['POST', /^\/api\/users$/, async (req, res) => {
     const b = await readBody(req);
     try {
-      sendJson(res, 201, store.createUser({ name: b.name }));
+      sendJson(res, 201, await store.createUser({ name: b.name }));
     } catch (e) {
       sendJson(res, 400, { error: e.message });
     }
@@ -87,7 +87,7 @@ const routes = [
   ['POST', /^\/api\/users\/upsert$/, async (req, res) => {
     const b = await readBody(req);
     try {
-      sendJson(res, 200, store.upsertUser({ id: b.id, name: b.name }));
+      sendJson(res, 200, await store.upsertUser({ id: b.id, name: b.name }));
     } catch (e) {
       sendJson(res, 400, { error: e.message });
     }
@@ -95,7 +95,7 @@ const routes = [
 
   // Delete your account: wipe all app data, then (if configured) the Supabase login.
   ['DELETE', /^\/api\/users\/(?<id>[^/]+)$/, async (req, res, p) => {
-    const result = store.deleteUser(p.id);
+    const result = await store.deleteUser(p.id);
     if (!result.ok) return sendJson(res, 404, result);
     const authDeleted = await deleteSupabaseUser(p.id);
     sendJson(res, 200, { ok: true, authDeleted });
@@ -104,42 +104,42 @@ const routes = [
   ['POST', /^\/api\/users\/(?<id>[^/]+)\/push-subscription$/, async (req, res, p) => {
     const b = await readBody(req);
     console.log(`  📲 push-subscription for user ${p.id}: ${b.subscription ? 'received' : 'MISSING'}`);
-    const u = store.setPushSubscription(p.id, b.subscription);
+    const u = await store.setPushSubscription(p.id, b.subscription);
     console.log(`  📲 user found: ${u ? u.name : 'NO'}`);
     u ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'user not found' });
   }],
 
   ['GET', /^\/api\/users\/(?<id>[^/]+)\/groups$/, async (req, res, p) => {
-    if (!store.getUser(p.id)) return sendJson(res, 404, { error: 'user not found' });
-    sendJson(res, 200, store.listGroupsForUser(p.id).map((g) => ({ id: g.id, name: g.name, memberCount: g.memberIds.size })));
+    if (!(await store.getUser(p.id))) return sendJson(res, 404, { error: 'user not found' });
+    sendJson(res, 200, await store.listGroupsForUser(p.id));
   }],
 
   /* ---- friends (private, separate from groups) ---- */
   ['GET', /^\/api\/users\/(?<id>[^/]+)\/friends$/, async (req, res, p) => {
-    if (!store.getUser(p.id)) return sendJson(res, 404, { error: 'user not found' });
-    sendJson(res, 200, store.listFriends(p.id));
+    if (!(await store.getUser(p.id))) return sendJson(res, 404, { error: 'user not found' });
+    sendJson(res, 200, await store.listFriends(p.id));
   }],
 
   ['POST', /^\/api\/users\/(?<id>[^/]+)\/friends$/, async (req, res, p) => {
     const b = await readBody(req);
-    const result = store.addFriend(p.id, (b.friendCode || '').trim());
+    const result = await store.addFriend(p.id, (b.friendCode || '').trim());
     result.ok ? sendJson(res, 200, result) : sendJson(res, 400, result);
   }],
 
   ['DELETE', /^\/api\/users\/(?<id>[^/]+)\/friends\/(?<friendId>[^/]+)$/, async (req, res, p) => {
-    sendJson(res, 200, store.removeFriend(p.id, p.friendId));
+    sendJson(res, 200, await store.removeFriend(p.id, p.friendId));
   }],
 
   /* ---- 1-on-1 hangs (mutual match, no chat) ---- */
   ['GET', /^\/api\/users\/(?<id>[^/]+)\/one-on-one$/, async (req, res, p) => {
-    if (!store.getUser(p.id)) return sendJson(res, 404, { error: 'user not found' });
-    sendJson(res, 200, store.getOneOnOneStatus(p.id));
+    if (!(await store.getUser(p.id))) return sendJson(res, 404, { error: 'user not found' });
+    sendJson(res, 200, await store.getOneOnOneStatus(p.id));
   }],
 
   ['POST', /^\/api\/users\/(?<id>[^/]+)\/one-on-one$/, async (req, res, p) => {
     const b = await readBody(req);
     try {
-      const { notifications, status } = store.setOneOnOne(p.id, b.selectedIds || []);
+      const { notifications, status } = await store.setOneOnOne(p.id, b.selectedIds || []);
       await dispatch(notifications);
       sendJson(res, 200, status);
     } catch (e) {
@@ -148,33 +148,33 @@ const routes = [
   }],
 
   ['DELETE', /^\/api\/users\/(?<id>[^/]+)\/one-on-one$/, async (req, res, p) => {
-    sendJson(res, 200, store.cancelOneOnOne(p.id));
+    sendJson(res, 200, await store.cancelOneOnOne(p.id));
   }],
 
   ['POST', /^\/api\/groups$/, async (req, res) => {
     const b = await readBody(req);
-    const g = store.createGroup({ name: b.name, memberIds: b.memberIds || [], minPeople: b.minPeople, ownerId: b.ownerId });
-    sendJson(res, 201, { id: g.id, name: g.name, minPeople: g.minPeople, ownerId: g.ownerId, memberIds: [...g.memberIds] });
+    const g = await store.createGroup({ name: b.name, memberIds: b.memberIds || [], minPeople: b.minPeople, ownerId: b.ownerId });
+    sendJson(res, 201, { id: g.id, name: g.name, minPeople: g.minPeople, ownerId: g.ownerId, memberIds: g.memberIds });
   }],
 
   ['GET', /^\/api\/groups\/(?<id>[^/]+)$/, async (req, res, p) => {
-    const g = store.getGroup(p.id);
+    const g = await store.getGroup(p.id);
     if (!g) return sendJson(res, 404, { error: 'group not found' });
-    sendJson(res, 200, { id: g.id, name: g.name, ownerId: g.ownerId, members: [...g.memberIds].map((id) => ({ id, name: (store.getUser(id) || {}).name })) });
+    sendJson(res, 200, { id: g.id, name: g.name, ownerId: g.ownerId, members: g.members });
   }],
 
   ['DELETE', /^\/api\/groups\/(?<id>[^/]+)\/members\/(?<userId>[^/]+)$/, async (req, res, p, q) => {
     const requesterId = q.get('requesterId');
     const result = (p.userId === requesterId)
-      ? store.leaveGroup(p.id, p.userId)                  // leaving yourself
-      : store.removeMember(p.id, p.userId, requesterId);  // owner removing someone else
+      ? await store.leaveGroup(p.id, p.userId)                  // leaving yourself
+      : await store.removeMember(p.id, p.userId, requesterId);  // owner removing someone else
     result.ok ? sendJson(res, 200, result) : sendJson(res, 400, result);
   }],
 
   ['POST', /^\/api\/groups\/(?<id>[^/]+)\/members$/, async (req, res, p) => {
     const b = await readBody(req);
-    const g = store.addMember(p.id, b.userId);
-    g ? sendJson(res, 200, { id: g.id, members: [...g.memberIds] }) : sendJson(res, 404, { error: 'group not found' });
+    const g = await store.addMember(p.id, b.userId);
+    g ? sendJson(res, 200, { id: g.id, members: g.memberIds }) : sendJson(res, 404, { error: 'group not found' });
   }],
 
   // Press the button. Returns ONLY the caller's resulting status (never the
@@ -182,43 +182,44 @@ const routes = [
   ['POST', /^\/api\/groups\/(?<id>[^/]+)\/signals$/, async (req, res, p) => {
     const b = await readBody(req);
     try {
-      const { signal, notifications } = store.createSignal({
+      const { signal, notifications } = await store.createSignal({
         groupId: p.id, userId: b.userId, fromTime: b.fromTime, oneOnOneOk: b.oneOnOneOk,
       });
       await dispatch(notifications);
-      sendJson(res, 201, { signalId: signal.id, ...store.getUserStatus(p.id, b.userId) });
+      const status = await store.getUserStatus(p.id, b.userId);
+      sendJson(res, 201, { signalId: signal.id, ...status });
     } catch (e) {
       sendJson(res, 400, { error: e.message });
     }
   }],
 
   ['DELETE', /^\/api\/signals\/(?<id>[^/]+)$/, async (req, res, p, q) => {
-    sendJson(res, 200, store.cancelSignal(p.id, q.get('userId')));
+    sendJson(res, 200, await store.cancelSignal(p.id, q.get('userId')));
   }],
 
   // Poll this to know what to draw on a user's screen. Privacy-safe.
   ['GET', /^\/api\/groups\/(?<id>[^/]+)\/status$/, async (req, res, p, q) => {
     const userId = q.get('userId');
     if (!userId) return sendJson(res, 400, { error: 'userId required' });
-    sendJson(res, 200, store.getUserStatus(p.id, userId));
+    sendJson(res, 200, await store.getUserStatus(p.id, userId));
   }],
 
   ['GET', /^\/api\/groups\/(?<id>[^/]+)\/chat$/, async (req, res, p) => {
-    sendJson(res, 200, store.getMessages(p.id));
+    sendJson(res, 200, await store.getMessages(p.id));
   }],
 
   ['POST', /^\/api\/groups\/(?<id>[^/]+)\/chat$/, async (req, res, p) => {
     const b = await readBody(req);
-    const msg = store.addMessage(p.id, b.userId, b.text);
+    const msg = await store.addMessage(p.id, b.userId, b.text);
     if (!msg) return sendJson(res, 400, { error: 'user not found' });
     sendJson(res, 201, msg);
     // notify only people who are currently down in this group (active signal)
-    const group = store.getGroup(p.id);
-    const activeIds = store.chatAudienceIds(p.id);
+    const group = await store.getGroup(p.id);
+    const activeIds = await store.chatAudienceIds(p.id);
     if (group) {
       for (const memberId of activeIds) {
         if (memberId === b.userId) continue;
-        const member = store.getUser(memberId);
+        const member = await store.getUser(memberId);
         if (member) {
           await notifier.send(member, {
             title: `${msg.name} in ${group.name}`,
@@ -231,7 +232,7 @@ const routes = [
 
   // DEMO ONLY — full god-view of a group. Delete before shipping.
   ['GET', /^\/api\/debug\/groups\/(?<id>[^/]+)$/, async (req, res, p) => {
-    const s = store.debugGroupState(p.id);
+    const s = await store.debugGroupState(p.id);
     s ? sendJson(res, 200, s) : sendJson(res, 404, { error: 'group not found' });
   }],
 ];

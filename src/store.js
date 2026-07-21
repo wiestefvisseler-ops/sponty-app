@@ -1,237 +1,256 @@
 'use strict';
 
 /* ------------------------------------------------------------------ *
- *  store.js — in-memory state + the rules around the engine.
- *
- *  Holds users, groups, "down" signals and live hangs (events), handles
- *  signal expiry, and — crucially — exposes a per-user status that NEVER
- *  leaks who else is currently down while a match is still pending.
- *
- *  It's intentionally a plain in-memory store so the whole thing runs with
- *  `node src/server.js` and zero install. Swapping these Maps for SQLite or
- *  Postgres is a self-contained change (see README -> "Add a database").
+ *  store.js — all data access + the rules around the matching engine.
+ *  Backed by Postgres (via db.js). Same public API as the old in-memory
+ *  store, but every function is now async.
  * ------------------------------------------------------------------ */
 
 const { randomUUID } = require('crypto');
 const { resolveSignals, DEFAULT_THRESHOLD } = require('./engine');
+const db = require('./db');
 
-function midnightTonight() {
-  const d = new Date();
-  d.setHours(24, 0, 0, 0);
-  return d.getTime();
-}
-
-function todayKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
-
-const users = new Map();  // id -> { id, name, pushSubscription }
-const groups = new Map(); // id -> { id, name, memberIds: Set }
-const signals = new Map(); // id -> signal
-const events = new Map(); // groupId -> event (at most one live hang per group)
-const messages = new Map(); // `${groupId}:${dateKey}` -> [{ id, userId, name, text, createdAt }]
-const friends = new Map();  // userId -> Set(friendId)  (symmetric: adding links both ways)
-const oneOnOne = new Map(); // userId -> { selected: Set(friendId), createdAt, expiresAt }
-const oneOnOneSent = new Set(); // `${aId}:${bId}:${dateKey}` pairs already notified today
-
-const now = () => Date.now();
+const midnightTonight = () => { const d = new Date(); d.setHours(24, 0, 0, 0); return d; };
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 
 /* ----------------------------- users ----------------------------- */
-function createUser({ name }) {
+async function createUser({ name }) {
   if (!name || !String(name).trim()) throw new Error('name required');
-  const u = { id: randomUUID(), name: String(name).trim() };
-  users.set(u.id, u);
-  return u;
+  const id = randomUUID();
+  const nm = String(name).trim();
+  await db.query('insert into users (id, name) values ($1,$2)', [id, nm]);
+  return { id, name: nm };
 }
-const getUser = (id) => users.get(id) || null;
-// Create-or-update a user with a KNOWN id — used for Supabase-authenticated users,
-// whose id is their Supabase user id rather than a locally generated one.
-function upsertUser({ id, name }) {
+
+async function getUser(id) {
+  const { rows } = await db.query('select id, name, push_subscription from users where id=$1', [id]);
+  if (!rows[0]) return null;
+  return { id: rows[0].id, name: rows[0].name, pushSubscription: rows[0].push_subscription || null };
+}
+
+async function upsertUser({ id, name }) {
   if (!id) throw new Error('id required');
-  let u = users.get(id);
-  if (!u) { u = { id, name: name ? String(name).trim() : 'Friend' }; users.set(id, u); }
-  else if (name) u.name = String(name).trim();
-  return u;
+  const nm = name ? String(name).trim() : null;
+  await db.query(
+    `insert into users (id, name) values ($1, coalesce($2,'Friend'))
+     on conflict (id) do update set name = coalesce($2, users.name)`,
+    [id, nm]
+  );
+  const { rows } = await db.query('select id, name from users where id=$1', [id]);
+  return { id: rows[0].id, name: rows[0].name };
 }
-function setPushSubscription(userId, subscription) {
-  const u = users.get(userId);
-  if (!u) return null;
-  u.pushSubscription = subscription;
-  return u;
+
+async function setPushSubscription(userId, subscription) {
+  const { rowCount } = await db.query(
+    'update users set push_subscription=$2 where id=$1',
+    [userId, subscription ? JSON.stringify(subscription) : null]
+  );
+  return rowCount ? { id: userId } : null;
+}
+
+async function deleteUser(userId) {
+  const { rows } = await db.query('select id from users where id=$1', [userId]);
+  if (!rows[0]) return { ok: false, error: 'user not found' };
+  const myGroups = await db.query('select group_id from group_members where user_id=$1', [userId]);
+  for (const { group_id } of myGroups.rows) await leaveGroup(group_id, userId);
+  await db.query('delete from users where id=$1', [userId]); // FKs cascade the rest
+  return { ok: true };
 }
 
 /* ----------------------------- groups ---------------------------- */
-function createGroup({ name, memberIds = [], minPeople = DEFAULT_THRESHOLD, ownerId = null }) {
+async function createGroup({ name, memberIds = [], minPeople = DEFAULT_THRESHOLD, ownerId = null }) {
   const min = Math.max(3, Math.min(10, Number(minPeople) || DEFAULT_THRESHOLD));
-  const g = { id: randomUUID(), name: String(name || 'Group'), memberIds: new Set(memberIds), minPeople: min, ownerId };
-  groups.set(g.id, g);
-  return g;
+  const id = randomUUID();
+  const nm = String(name || 'Group');
+  await db.query('insert into groups (id, name, min_people, owner_id) values ($1,$2,$3,$4)', [id, nm, min, ownerId]);
+  for (const uid of new Set(memberIds)) {
+    await db.query('insert into group_members (group_id, user_id) values ($1,$2) on conflict do nothing', [id, uid]);
+  }
+  return { id, name: nm, minPeople: min, ownerId, memberIds: [...new Set(memberIds)] };
 }
-const getGroup = (id) => groups.get(id) || null;
-function removeMember(groupId, userId, requesterId) {
-  const g = groups.get(groupId);
-  if (!g) return { ok: false, error: 'group not found' };
-  if (g.ownerId !== requesterId) return { ok: false, error: 'not the group owner' };
+
+async function getGroup(id) {
+  const { rows } = await db.query('select id, name, min_people, owner_id from groups where id=$1', [id]);
+  if (!rows[0]) return null;
+  const mem = await db.query(
+    'select gm.user_id, u.name from group_members gm left join users u on u.id=gm.user_id where gm.group_id=$1',
+    [id]
+  );
+  return {
+    id: rows[0].id, name: rows[0].name, minPeople: rows[0].min_people, ownerId: rows[0].owner_id,
+    members: mem.rows.map((r) => ({ id: r.user_id, name: r.name })),
+    memberIds: mem.rows.map((r) => r.user_id),
+  };
+}
+
+async function addMember(groupId, userId) {
+  const g = await db.query('select id from groups where id=$1', [groupId]);
+  if (!g.rows[0]) return null;
+  await db.query('insert into group_members (group_id, user_id) values ($1,$2) on conflict do nothing', [groupId, userId]);
+  const mem = await db.query('select user_id from group_members where group_id=$1', [groupId]);
+  return { id: groupId, memberIds: mem.rows.map((r) => r.user_id) };
+}
+
+async function removeMember(groupId, userId, requesterId) {
+  const g = await db.query('select owner_id from groups where id=$1', [groupId]);
+  if (!g.rows[0]) return { ok: false, error: 'group not found' };
+  if (g.rows[0].owner_id !== requesterId) return { ok: false, error: 'not the group owner' };
   if (userId === requesterId) return { ok: false, error: 'cannot remove yourself' };
-  g.memberIds.delete(userId);
+  await db.query('delete from group_members where group_id=$1 and user_id=$2', [groupId, userId]);
   return { ok: true };
 }
 
-// Leave a group yourself: drop your signal, remove you from any live hang,
-// hand off ownership if you owned it, and delete the group if you were the last.
-function leaveGroup(groupId, userId) {
-  const g = groups.get(groupId);
-  if (!g) return { ok: false, error: 'group not found' };
-  if (!g.memberIds.has(userId)) return { ok: false, error: 'not a member' };
+async function leaveGroup(groupId, userId) {
+  const g = await db.query('select owner_id from groups where id=$1', [groupId]);
+  if (!g.rows[0]) return { ok: false, error: 'group not found' };
+  const mem = await db.query('select 1 from group_members where group_id=$1 and user_id=$2', [groupId, userId]);
+  if (!mem.rows[0]) return { ok: false, error: 'not a member' };
 
-  g.memberIds.delete(userId);
-  for (const s of signals.values()) {
-    if (s.groupId === groupId && s.userId === userId && !s.cancelled) s.cancelled = true;
-  }
-  const ev = events.get(groupId);
-  if (ev) ev.participantUserIds.delete(userId);
+  await db.query('delete from group_members where group_id=$1 and user_id=$2', [groupId, userId]);
+  await db.query('update signals set cancelled=true where group_id=$1 and user_id=$2 and not cancelled', [groupId, userId]);
+  await db.query(
+    'delete from event_participants ep using events e where ep.event_id=e.id and e.group_id=$1 and ep.user_id=$2',
+    [groupId, userId]
+  );
 
-  if (g.memberIds.size === 0) {              // last one out -> delete the group
-    groups.delete(groupId);
-    events.delete(groupId);
-    for (const id of [...signals.keys()]) if (signals.get(id).groupId === groupId) signals.delete(id);
-    messages.delete(`${groupId}:${todayKey()}`);
+  const rest = await db.query('select user_id from group_members where group_id=$1', [groupId]);
+  if (rest.rows.length === 0) {
+    await db.query('delete from groups where id=$1', [groupId]); // cascade clears its signals/events/messages
     return { ok: true, deleted: true };
   }
-  if (g.ownerId === userId) g.ownerId = [...g.memberIds][0];  // hand ownership over
-  if (activeEvent(groupId) && activeSignals(groupId).length < 2) resetGroup(groupId);
+  if (g.rows[0].owner_id === userId) {
+    await db.query('update groups set owner_id=$2 where id=$1', [groupId, rest.rows[0].user_id]);
+  }
+  await maybeCollapse(groupId);
   return { ok: true };
 }
 
-// Permanently delete a user: leave every group (with ownership hand-off / empty-
-// group deletion), then drop their signals, friendships, 1-on-1 state and record.
-function deleteUser(userId) {
-  if (!users.has(userId)) return { ok: false, error: 'user not found' };
-  for (const g of [...groups.values()]) {
-    if (g.memberIds.has(userId)) leaveGroup(g.id, userId);
-  }
-  for (const s of signals.values()) if (s.userId === userId) s.cancelled = true;
-  const mine = friends.get(userId);
-  if (mine) for (const fid of mine) { const set = friends.get(fid); if (set) set.delete(userId); }
-  friends.delete(userId);
-  oneOnOne.delete(userId);
-  for (const o of oneOnOne.values()) o.selected.delete(userId);
-  users.delete(userId);
-  return { ok: true };
+async function listGroupsForUser(userId) {
+  const { rows } = await db.query(
+    `select g.id, g.name,
+            (select count(*)::int from group_members m2 where m2.group_id=g.id) as member_count
+     from groups g join group_members gm on gm.group_id=g.id
+     where gm.user_id=$1 order by g.created_at`,
+    [userId]
+  );
+  return rows.map((r) => ({ id: r.id, name: r.name, memberCount: r.member_count }));
 }
-function addMember(groupId, userId) {
-  const g = groups.get(groupId);
-  if (!g) return null;
-  g.memberIds.add(userId);
-  return g;
-}
-const listGroupsForUser = (userId) =>
-  [...groups.values()].filter((g) => g.memberIds.has(userId));
 
 /* --------------------------- internals --------------------------- */
-function activeSignals(groupId) {
-  const t = now();
-  return [...signals.values()].filter(
-    (s) => s.groupId === groupId && !s.cancelled && s.expiresAt > t
+async function activeSignals(groupId) {
+  const { rows } = await db.query(
+    'select id, user_id, from_time, one_on_one_ok from signals where group_id=$1 and not cancelled and expires_at > now()',
+    [groupId]
   );
+  return rows.map((r) => ({ id: r.id, userId: r.user_id, fromTime: r.from_time, oneOnOneOk: r.one_on_one_ok }));
 }
 
-function activeEvent(groupId) {
-  const e = events.get(groupId);
-  if (!e || e.expiresAt <= now()) return null;
-  return e;
+async function activeSignalCount(groupId) {
+  const { rows } = await db.query(
+    'select count(*)::int as n from signals where group_id=$1 and not cancelled and expires_at > now()',
+    [groupId]
+  );
+  return rows[0].n;
 }
 
-// best-effort "soonest" for display; understands "HH:MM", ignores the rest
+async function activeEventRow(groupId) {
+  const { rows } = await db.query(
+    'select id, group_id, mode from events where group_id=$1 and expires_at > now() order by created_at desc limit 1',
+    [groupId]
+  );
+  return rows[0] || null;
+}
+
 function earliestFrom(times) {
-  const toMin = (s) => {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(String(s));
-    return m ? Number(m[1]) * 60 + Number(m[2]) : Infinity;
-  };
+  const toMin = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s)); return m ? Number(m[1]) * 60 + Number(m[2]) : Infinity; };
   return [...times].sort((a, b) => toMin(a) - toMin(b))[0];
 }
 
-function participantsView(event, groupId) {
-  const active = activeSignals(groupId);
-  const activeIds = new Set(active.map((s) => s.userId));
-  const timeFor = (uid) => (active.find((s) => s.userId === uid) || {}).fromTime || null;
-  // only show people who are still actually down (handles someone bailing)
-  return [...event.participantUserIds]
-    .filter((uid) => activeIds.has(uid))
-    .map((uid) => ({ userId: uid, name: (users.get(uid) || {}).name || 'Friend', fromTime: timeFor(uid) }));
+// Participants who are STILL actively down, with name + fromTime.
+async function participantsView(eventId, groupId) {
+  const { rows } = await db.query(
+    `select ep.user_id, coalesce(u.name,'Friend') as name,
+            (select s.from_time from signals s
+             where s.group_id=$2 and s.user_id=ep.user_id and not s.cancelled and s.expires_at > now()
+             order by s.created_at desc limit 1) as from_time
+     from event_participants ep left join users u on u.id=ep.user_id
+     where ep.event_id=$1
+       and exists (select 1 from signals s2
+                   where s2.group_id=$2 and s2.user_id=ep.user_id and not s2.cancelled and s2.expires_at > now())`,
+    [eventId, groupId]
+  );
+  return rows.map((r) => ({ userId: r.user_id, name: r.name, fromTime: r.from_time || null }));
 }
 
-/**
- * Re-evaluate a group after any change. Creates or grows a live hang and
- * returns the brand-new notifications to send (deduped per person/event).
- */
-function recompute(groupId) {
-  const g = groups.get(groupId);
-  if (!g) return { event: null, notifications: [] };
+// Re-evaluate a group after a change. Creates/grows a live hang, returns new pushes.
+async function recompute(groupId) {
+  const gq = await db.query('select min_people from groups where id=$1', [groupId]);
+  if (!gq.rows[0]) return { event: null, notifications: [] };
+  const min = gq.rows[0].min_people;
 
-  const active = activeSignals(groupId);
-  const decision = resolveSignals(active.map((s) => ({ userId: s.userId, oneOnOneOk: s.oneOnOneOk })), g.minPeople);
+  const active = await activeSignals(groupId);
+  const decision = resolveSignals(active.map((s) => ({ userId: s.userId, oneOnOneOk: s.oneOnOneOk })), min);
   const notifications = [];
 
-  let event = activeEvent(groupId);
-
-  // No live hang yet AND nothing crosses the line -> signals stay pending and
-  // invisible. (The threshold only gates STARTING a hang.)
-  if (!event && !decision.triggered) {
-    return { event: null, notifications };
-  }
+  let event = await activeEventRow(groupId);
+  if (!event && !decision.triggered) return { event: null, notifications };
 
   if (!event) {
-    // A fresh match just crossed the threshold.
-    event = {
-      id: randomUUID(),
-      groupId,
-      mode: decision.mode,
-      participantUserIds: new Set(decision.participantUserIds),
-      createdAt: now(),
-      expiresAt: midnightTonight(),
-      sent: new Map(), // userId -> 'its_on' | 'heads_up' (dedupe)
-    };
-    events.set(groupId, event);
+    const evId = randomUUID();
+    await db.query('insert into events (id, group_id, mode, expires_at) values ($1,$2,$3,$4)', [evId, groupId, decision.mode, midnightTonight()]);
+    for (const uid of decision.participantUserIds) {
+      await db.query('insert into event_participants (event_id, user_id) values ($1,$2) on conflict do nothing', [evId, uid]);
+    }
+    event = { id: evId, group_id: groupId, mode: decision.mode };
   } else {
-    // A hang is already live. Anyone currently down joins it — NO threshold
-    // re-check, because the hang is already happening. This is what makes
-    // "Join this hang" work even for min-people-4+ groups and pair matches.
-    active.forEach((s) => event.participantUserIds.add(s.userId));
-    if (active.length >= 3) event.mode = 'group'; // a pair grows into a group
+    for (const s of active) {
+      await db.query('insert into event_participants (event_id, user_id) values ($1,$2) on conflict do nothing', [event.id, s.userId]);
+    }
+    if (active.length >= 3 && event.mode !== 'group') {
+      await db.query('update events set mode=$2 where id=$1', [event.id, 'group']);
+      event.mode = 'group';
+    }
   }
 
-  const view = participantsView(event, groupId);
+  const view = await participantsView(event.id, groupId);
   const soon = earliestFrom(view.map((p) => p.fromTime).filter(Boolean));
-  const nameOf = (uid) => (users.get(uid) || {}).name || 'a friend';
 
-  // people who are in -> "it's on" (once each)
-  for (const uid of event.participantUserIds) {
-    if (event.sent.get(uid) === 'its_on') continue;
-    event.sent.set(uid, 'its_on');
-    if (!users.get(uid)) continue;
+  const sentQ = await db.query('select user_id, kind from event_notifications where event_id=$1', [event.id]);
+  const sent = new Map(sentQ.rows.map((r) => [r.user_id, r.kind]));
+  const partQ = await db.query('select user_id from event_participants where event_id=$1', [event.id]);
+  const participantIds = new Set(partQ.rows.map((r) => r.user_id));
+
+  for (const uid of participantIds) {
+    if (sent.get(uid) === 'its_on') continue;
+    await db.query(
+      `insert into event_notifications (event_id, user_id, kind) values ($1,$2,'its_on')
+       on conflict (event_id, user_id) do update set kind='its_on'`,
+      [event.id, uid]
+    );
+    const u = await getUser(uid);
+    if (!u) continue;
     const others = view.filter((p) => p.userId !== uid).map((p) => p.name);
     notifications.push({
-      userId: uid,
-      kind: 'its_on',
+      userId: uid, kind: 'its_on',
       title: event.mode === 'pair' ? "Just you two — it's on" : "It's sponty time ✨",
-      body:
-        event.mode === 'pair'
-          ? `You and ${others[0] || 'a friend'} both said a 1-on-1's fine.`
-          : `${others.join(', ')} ${others.length === 1 ? 'is' : 'are'} in${soon ? ` — from ${soon}` : ''}.`,
+      body: event.mode === 'pair'
+        ? `You and ${others[0] || 'a friend'} both said a 1-on-1's fine.`
+        : `${others.join(', ')} ${others.length === 1 ? 'is' : 'are'} in${soon ? ` — from ${soon}` : ''}.`,
       data: { type: 'its_on', groupId, eventId: event.id },
     });
   }
 
-  // everyone else in the group -> soft heads-up (once each)
-  for (const uid of g.memberIds) {
-    if (event.participantUserIds.has(uid) || event.sent.get(uid)) continue;
-    event.sent.set(uid, 'heads_up');
-    if (!users.get(uid)) continue;
+  const memQ = await db.query('select user_id from group_members where group_id=$1', [groupId]);
+  for (const { user_id: uid } of memQ.rows) {
+    if (participantIds.has(uid) || sent.has(uid)) continue;
+    await db.query(
+      `insert into event_notifications (event_id, user_id, kind) values ($1,$2,'heads_up') on conflict do nothing`,
+      [event.id, uid]
+    );
+    const u = await getUser(uid);
+    if (!u) continue;
     notifications.push({
-      userId: uid,
-      kind: 'heads_up',
+      userId: uid, kind: 'heads_up',
       title: 'Some of the squad are chilling',
       body: `Join if you're free${soon ? ` — from ${soon}` : ''}.`,
       data: { type: 'heads_up', groupId, eventId: event.id },
@@ -242,103 +261,73 @@ function recompute(groupId) {
 }
 
 /* ---------------------------- signals ---------------------------- */
-function createSignal({ groupId, userId, fromTime = null, oneOnOneOk = false }) {
-  const g = groups.get(groupId);
-  if (!g) throw new Error('group not found');
-  if (!g.memberIds.has(userId)) throw new Error('user is not a member of this group');
+async function createSignal({ groupId, userId, fromTime = null, oneOnOneOk = false }) {
+  const g = await db.query('select id from groups where id=$1', [groupId]);
+  if (!g.rows[0]) throw new Error('group not found');
+  const mem = await db.query('select 1 from group_members where group_id=$1 and user_id=$2', [groupId, userId]);
+  if (!mem.rows[0]) throw new Error('user is not a member of this group');
 
-  // re-pressing replaces your previous live signal (lets you change time / 1-on-1)
-  for (const s of signals.values()) {
-    if (s.groupId === groupId && s.userId === userId && !s.cancelled && s.expiresAt > now()) {
-      s.cancelled = true;
-    }
-  }
-
-  const sig = {
-    id: randomUUID(),
-    groupId,
-    userId,
-    fromTime,
-    oneOnOneOk: !!oneOnOneOk,
-    createdAt: now(),
-    expiresAt: midnightTonight(),
-    cancelled: false,
-  };
-  signals.set(sig.id, sig);
-
-  const { notifications } = recompute(groupId);
-  return { signal: sig, notifications };
+  await db.query(
+    'update signals set cancelled=true where group_id=$1 and user_id=$2 and not cancelled and expires_at > now()',
+    [groupId, userId]
+  );
+  const id = randomUUID();
+  await db.query(
+    'insert into signals (id, group_id, user_id, from_time, one_on_one_ok, expires_at) values ($1,$2,$3,$4,$5,$6)',
+    [id, groupId, userId, fromTime, !!oneOnOneOk, midnightTonight()]
+  );
+  const { notifications } = await recompute(groupId);
+  return { signal: { id, groupId, userId, fromTime, oneOnOneOk: !!oneOnOneOk }, notifications };
 }
 
-function cancelSignal(signalId, userId = null) {
-  const s = signals.get(signalId);
+async function cancelSignal(signalId, userId = null) {
+  const { rows } = await db.query('select id, group_id, user_id from signals where id=$1', [signalId]);
+  const s = rows[0];
   if (!s) return { ok: false, error: 'signal not found' };
-  if (userId && s.userId !== userId) return { ok: false, error: 'not your signal' };
-  s.cancelled = true;
-
-  // A live hang needs at least 2 people. Once it's on, people who bail just
-  // drop off the roster (plans are made) — UNLESS bailing collapses it to 1 or
-  // 0 people still down. At that point the hang can't hold, so we wipe the whole
-  // group clean — event, signals and chat — exactly like the 00:00 daily reset.
-  const event = activeEvent(s.groupId);
-  if (event && activeSignals(s.groupId).length < 2) {
-    resetGroup(s.groupId);
-  }
+  if (userId && s.user_id !== userId) return { ok: false, error: 'not your signal' };
+  await db.query('update signals set cancelled=true where id=$1', [signalId]);
+  await maybeCollapse(s.group_id);
   return { ok: true };
 }
 
-/**
- * Reset a single group's day: drop its live hang, clear everyone's "down"
- * signals, and wipe today's chat. This is the same end-state a group reaches
- * naturally at midnight — we just do it on demand when a hang collapses.
- */
-function resetGroup(groupId) {
-  events.delete(groupId);
-  for (const id of [...signals.keys()]) {
-    if (signals.get(id).groupId === groupId) signals.delete(id);
-  }
-  messages.delete(`${groupId}:${todayKey()}`);
+async function maybeCollapse(groupId) {
+  const ev = await activeEventRow(groupId);
+  if (ev && (await activeSignalCount(groupId)) < 2) await resetGroup(groupId);
+}
+
+async function resetGroup(groupId) {
+  await db.query('delete from events where group_id=$1', [groupId]);
+  await db.query('delete from signals where group_id=$1', [groupId]);
+  await db.query('delete from messages where group_id=$1 and created_at >= $2', [groupId, startOfToday()]);
 }
 
 /* -------------------- privacy-safe per-user view ------------------ */
-// A user's current live commitment, if any: a 1-on-1 match takes priority, else
-// the first group where they're a live participant. Used to lock the "I'm down"
-// buttons everywhere once someone is already out for the night.
-function activeMatch(userId) {
-  const oo = oneOnOneMatches(userId);
-  if (oo.length) return { type: 'oneonone', friendName: (users.get(oo[0]) || {}).name || 'a friend' };
-  for (const g of groups.values()) {
-    if (!g.memberIds.has(userId)) continue;
-    const ev = activeEvent(g.id);
-    if (ev && ev.participantUserIds.has(userId) && activeSignals(g.id).some((s) => s.userId === userId)) {
-      return { type: 'group', groupId: g.id, groupName: g.name };
-    }
+async function getUserStatus(groupId, userId) {
+  const g = await db.query('select id from groups where id=$1', [groupId]);
+  if (!g.rows[0]) return { status: 'idle' };
+
+  const event = await activeEventRow(groupId);
+  const mySigQ = await db.query(
+    'select id from signals where group_id=$1 and user_id=$2 and not cancelled and expires_at > now() order by created_at desc limit 1',
+    [groupId, userId]
+  );
+  const mySignal = mySigQ.rows[0] || null;
+
+  let stillIn = false;
+  if (event && mySignal) {
+    const p = await db.query('select 1 from event_participants where event_id=$1 and user_id=$2', [event.id, userId]);
+    stillIn = !!p.rows[0];
   }
-  return null;
-}
-
-function getUserStatus(groupId, userId) {
-  const g = groups.get(groupId);
-  if (!g) return { status: 'idle' };
-
-  const event = activeEvent(groupId);
-  const mySignal = activeSignals(groupId).find((s) => s.userId === userId);
-  const stillIn = event && event.participantUserIds.has(userId) && !!mySignal;
 
   let out;
-  if (event && stillIn) out = { status: 'on', ...eventPayload(event, groupId) };
-  else if (event) out = { status: 'heads_up', ...eventPayload(event, groupId) };
-  // No live hang. If you're down you're "pending" — and we reveal NOTHING
-  // about anyone else. This is the whole privacy promise.
-  else if (mySignal) out = { status: 'pending', since: mySignal.createdAt };
+  if (event && stillIn) out = { status: 'on', ...(await eventPayload(event, groupId)) };
+  else if (event) out = { status: 'heads_up', ...(await eventPayload(event, groupId)) };
+  else if (mySignal) out = { status: 'pending' };
   else out = { status: 'idle' };
 
-  // Your OWN signal id is safe to return (lets the client cancel it).
   if (mySignal) out.signalId = mySignal.id;
 
-  // If you're already matched somewhere ELSE, tell the client so it can
-  // deactivate the "I'm down" button here (you can't be in two hangs at once).
-  const am = activeMatch(userId);
+  const am = await activeMatch(userId);
   if (am && out.status !== 'on') {
     out.lockedElsewhere = true;
     out.lockedLabel = am.type === 'oneonone' ? `with ${am.friendName}` : `in ${am.groupName}`;
@@ -346,166 +335,187 @@ function getUserStatus(groupId, userId) {
   return out;
 }
 
-function eventPayload(event, groupId) {
-  const participants = participantsView(event, groupId);
+async function eventPayload(event, groupId) {
+  const participants = await participantsView(event.id, groupId);
   return {
-    mode: event.mode,
-    eventId: event.id,
-    participants,
+    mode: event.mode, eventId: event.id, participants,
     earliestFrom: earliestFrom(participants.map((p) => p.fromTime).filter(Boolean)) || null,
   };
 }
 
-/* ----- debug-only full state (REMOVE before production) ---------- */
-function debugGroupState(groupId) {
-  const g = groups.get(groupId);
-  if (!g) return null;
-  const event = activeEvent(groupId);
-  return {
-    group: {
-      id: g.id,
-      name: g.name,
-      members: [...g.memberIds].map((id) => ({ id, name: (users.get(id) || {}).name })),
-    },
-    activeSignals: activeSignals(groupId).map((s) => ({
-      userId: s.userId,
-      name: (users.get(s.userId) || {}).name,
-      fromTime: s.fromTime,
-      oneOnOneOk: s.oneOnOneOk,
-    })),
-    event: event
-      ? { id: event.id, mode: event.mode, participants: [...event.participantUserIds].map((id) => (users.get(id) || {}).name) }
-      : null,
-  };
+// A user's current live commitment (1-on-1 first, else a live group participation).
+async function activeMatch(userId) {
+  const oo = await oneOnOneMatches(userId);
+  if (oo.length) { const u = await getUser(oo[0]); return { type: 'oneonone', friendName: (u && u.name) || 'a friend' }; }
+  const { rows } = await db.query(
+    `select g.id, g.name from groups g
+     join events e on e.group_id=g.id and e.expires_at > now()
+     join event_participants ep on ep.event_id=e.id and ep.user_id=$1
+     where exists (select 1 from signals s where s.group_id=g.id and s.user_id=$1 and not s.cancelled and s.expires_at > now())
+     limit 1`,
+    [userId]
+  );
+  if (rows[0]) return { type: 'group', groupId: rows[0].id, groupName: rows[0].name };
+  return null;
 }
 
 /* ----------- users who should receive chat notifications ---------- */
-// Includes: people with active signals + all group members if a hang is live
-// (heads_up members can see the chat and should stay in the loop)
-function chatAudienceIds(groupId) {
-  const ids = new Set(activeSignals(groupId).map((s) => s.userId));
-  if (activeEvent(groupId)) {
-    const g = groups.get(groupId);
-    if (g) g.memberIds.forEach((id) => ids.add(id));
+async function chatAudienceIds(groupId) {
+  const ids = new Set();
+  const sig = await db.query('select distinct user_id from signals where group_id=$1 and not cancelled and expires_at > now()', [groupId]);
+  sig.rows.forEach((r) => ids.add(r.user_id));
+  if (await activeEventRow(groupId)) {
+    const mem = await db.query('select user_id from group_members where group_id=$1', [groupId]);
+    mem.rows.forEach((r) => ids.add(r.user_id));
   }
   return ids;
 }
 
 /* ----------------------------- chat ----------------------------- */
-function getMessages(groupId) {
-  const key = `${groupId}:${todayKey()}`;
-  return messages.get(key) || [];
+async function getMessages(groupId) {
+  const { rows } = await db.query(
+    'select id, user_id, name, text, created_at from messages where group_id=$1 and created_at >= $2 order by created_at',
+    [groupId, startOfToday()]
+  );
+  return rows.map((r) => ({ id: r.id, userId: r.user_id, name: r.name, text: r.text, createdAt: r.created_at }));
 }
 
-function addMessage(groupId, userId, text) {
-  const user = users.get(userId);
-  if (!user) return null;
-  const key = `${groupId}:${todayKey()}`;
-  if (!messages.has(key)) messages.set(key, []);
-  const msg = { id: randomUUID(), userId, name: user.name, text: String(text).slice(0, 500), createdAt: now() };
-  messages.get(key).push(msg);
-  return msg;
+async function addMessage(groupId, userId, text) {
+  const u = await getUser(userId);
+  if (!u) return null;
+  const id = randomUUID();
+  const t = String(text).slice(0, 500);
+  await db.query('insert into messages (id, group_id, user_id, name, text) values ($1,$2,$3,$4,$5)', [id, groupId, userId, u.name, t]);
+  return { id, userId, name: u.name, text: t };
 }
 
 /* --------------------------- friends ---------------------------- */
-// A private, symmetric friends list, separate from groups. Adding by code
-// links both people so either can start a 1-on-1 with the other.
-function addFriend(userId, friendId) {
+async function addFriend(userId, friendId) {
   if (!userId || !friendId) return { ok: false, error: 'missing code' };
   if (userId === friendId) return { ok: false, error: "that's your own code" };
-  const me = users.get(userId);
-  const friend = users.get(friendId);
+  const me = await getUser(userId);
+  const fr = await getUser(friendId);
   if (!me) return { ok: false, error: 'user not found' };
-  if (!friend) return { ok: false, error: 'no one has that code' };
-  if (!friends.has(userId)) friends.set(userId, new Set());
-  if (!friends.has(friendId)) friends.set(friendId, new Set());
-  friends.get(userId).add(friendId);
-  friends.get(friendId).add(userId); // mutual — you're now connected both ways
-  return { ok: true, friend: { id: friend.id, name: friend.name } };
+  if (!fr) return { ok: false, error: 'no one has that code' };
+  await db.query('insert into friends (user_id, friend_id) values ($1,$2) on conflict do nothing', [userId, friendId]);
+  await db.query('insert into friends (user_id, friend_id) values ($1,$2) on conflict do nothing', [friendId, userId]);
+  return { ok: true, friend: { id: fr.id, name: fr.name } };
 }
 
-function listFriends(userId) {
-  const set = friends.get(userId) || new Set();
-  return [...set].filter((id) => users.has(id)).map((id) => ({ id, name: users.get(id).name }));
+async function listFriends(userId) {
+  const { rows } = await db.query(
+    'select f.friend_id, u.name from friends f join users u on u.id=f.friend_id where f.user_id=$1',
+    [userId]
+  );
+  return rows.map((r) => ({ id: r.friend_id, name: r.name }));
 }
 
-function removeFriend(userId, friendId) {
-  friends.get(userId) && friends.get(userId).delete(friendId);
-  friends.get(friendId) && friends.get(friendId).delete(userId);
-  // also drop them from any live 1-on-1 selection
-  const mine = oneOnOne.get(userId);
-  if (mine) mine.selected.delete(friendId);
-  const theirs = oneOnOne.get(friendId);
-  if (theirs) theirs.selected.delete(userId);
+async function removeFriend(userId, friendId) {
+  await db.query('delete from friends where (user_id=$1 and friend_id=$2) or (user_id=$2 and friend_id=$1)', [userId, friendId]);
+  await db.query('delete from one_on_one_selected where (user_id=$1 and friend_id=$2) or (user_id=$2 and friend_id=$1)', [userId, friendId]);
   return { ok: true };
 }
 
 /* -------------------------- 1-on-1 hangs -------------------------- */
-// You flip yourself "down for a 1-on-1" and pick which friends you're open to.
-// A match happens ONLY when it's mutual: you picked them AND they picked you.
-// Nobody is told you're down unless you both are (same privacy promise as groups).
-function activeOneOnOne(userId) {
-  const o = oneOnOne.get(userId);
-  if (!o || o.expiresAt <= now()) return null;
-  return o;
+async function activeOneOnOne(userId) {
+  const { rows } = await db.query('select user_id from one_on_one where user_id=$1 and expires_at > now()', [userId]);
+  return rows[0] || null;
 }
 
-function oneOnOneMatches(userId) {
-  const mine = activeOneOnOne(userId);
-  if (!mine) return [];
-  const out = [];
-  for (const fid of mine.selected) {
-    const theirs = activeOneOnOne(fid);
-    if (theirs && theirs.selected.has(userId)) out.push(fid);
-  }
-  return out;
+async function selectedOf(userId) {
+  const { rows } = await db.query('select friend_id from one_on_one_selected where user_id=$1', [userId]);
+  return rows.map((r) => r.friend_id);
 }
 
-function getOneOnOneStatus(userId) {
-  const mine = activeOneOnOne(userId);
-  const am = activeMatch(userId);
+async function oneOnOneMatches(userId) {
+  if (!(await activeOneOnOne(userId))) return [];
+  const { rows } = await db.query(
+    `select s.friend_id from one_on_one_selected s
+     where s.user_id=$1
+       and exists (select 1 from one_on_one o where o.user_id=s.friend_id and o.expires_at > now())
+       and exists (select 1 from one_on_one_selected s2 where s2.user_id=s.friend_id and s2.friend_id=$1)`,
+    [userId]
+  );
+  return rows.map((r) => r.friend_id);
+}
+
+async function getOneOnOneStatus(userId) {
+  const mine = await activeOneOnOne(userId);
+  const matchIds = await oneOnOneMatches(userId);
+  const matches = [];
+  for (const id of matchIds) { const u = await getUser(id); matches.push({ id, name: (u && u.name) || 'Friend' }); }
+  const am = await activeMatch(userId);
   return {
     down: !!mine,
-    selected: mine ? [...mine.selected] : [],
-    matches: oneOnOneMatches(userId).map((id) => ({ id, name: (users.get(id) || {}).name || 'Friend' })),
-    // committed via a GROUP hang -> lock the 1-on-1 "I'm down" button too
+    selected: mine ? await selectedOf(userId) : [],
+    matches,
     lockedByGroup: am && am.type === 'group' ? am.groupName : null,
   };
 }
 
-const pairKey = (a, b) => `${[a, b].sort().join(':')}:${todayKey()}`;
+async function setOneOnOne(userId, selectedIds = []) {
+  if (!(await getUser(userId))) throw new Error('user not found');
+  const friendRows = await db.query('select friend_id from friends where user_id=$1', [userId]);
+  const friendSet = new Set(friendRows.rows.map((r) => r.friend_id));
+  const selected = [...new Set(selectedIds)].filter((id) => friendSet.has(id));
 
-function setOneOnOne(userId, selectedIds = []) {
-  if (!users.get(userId)) throw new Error('user not found');
-  const myFriends = friends.get(userId) || new Set();
-  const selected = new Set((selectedIds || []).filter((id) => myFriends.has(id)));
-  oneOnOne.set(userId, { selected, createdAt: now(), expiresAt: midnightTonight() });
+  await db.query(
+    'insert into one_on_one (user_id, expires_at) values ($1,$2) on conflict (user_id) do update set expires_at=$2, created_at=now()',
+    [userId, midnightTonight()]
+  );
+  await db.query('delete from one_on_one_selected where user_id=$1', [userId]);
+  for (const fid of selected) {
+    await db.query('insert into one_on_one_selected (user_id, friend_id) values ($1,$2) on conflict do nothing', [userId, fid]);
+  }
 
-  // notify each newly-mutual pair exactly once
   const notifications = [];
-  for (const fid of oneOnOneMatches(userId)) {
-    const key = pairKey(userId, fid);
-    if (oneOnOneSent.has(key)) continue;
-    oneOnOneSent.add(key);
-    const me = users.get(userId);
-    const friend = users.get(fid);
+  for (const fid of await oneOnOneMatches(userId)) {
+    const [a, b] = [userId, fid].sort();
+    const ins = await db.query(
+      'insert into one_on_one_sent (a_id, b_id, day) values ($1,$2,current_date) on conflict do nothing',
+      [a, b]
+    );
+    if (ins.rowCount === 0) continue; // already notified this pair today
+    const me = await getUser(userId);
+    const friend = await getUser(fid);
     if (!me || !friend) continue;
     notifications.push({ userId, title: "It's on — just you two ✨", body: `${friend.name} is also down for a 1-on-1.` });
     notifications.push({ userId: fid, title: "It's on — just you two ✨", body: `${me.name} is also down for a 1-on-1.` });
   }
-  return { notifications, status: getOneOnOneStatus(userId) };
+  return { notifications, status: await getOneOnOneStatus(userId) };
 }
 
-function cancelOneOnOne(userId) {
-  oneOnOne.delete(userId);
+async function cancelOneOnOne(userId) {
+  await db.query('delete from one_on_one where user_id=$1', [userId]);
+  await db.query('delete from one_on_one_selected where user_id=$1', [userId]);
   return { ok: true };
 }
 
+/* ----- debug-only full state (REMOVE before production) ---------- */
+async function debugGroupState(groupId) {
+  const g = await getGroup(groupId);
+  if (!g) return null;
+  const active = await activeSignals(groupId);
+  const ev = await activeEventRow(groupId);
+  let event = null;
+  if (ev) {
+    const parts = await db.query('select coalesce(u.name,$2) as name from event_participants ep left join users u on u.id=ep.user_id where ep.event_id=$1', [ev.id, 'Friend']);
+    event = { id: ev.id, mode: ev.mode, participants: parts.rows.map((r) => r.name) };
+  }
+  const names = {};
+  for (const s of active) { const u = await getUser(s.userId); names[s.userId] = u && u.name; }
+  return {
+    group: { id: g.id, name: g.name, members: g.members },
+    activeSignals: active.map((s) => ({ userId: s.userId, name: names[s.userId], fromTime: s.fromTime, oneOnOneOk: s.oneOnOneOk })),
+    event,
+  };
+}
+
 module.exports = {
-  createUser, getUser, upsertUser, setPushSubscription,
+  createUser, getUser, upsertUser, setPushSubscription, deleteUser,
   createGroup, getGroup, addMember, listGroupsForUser,
   createSignal, cancelSignal, getUserStatus, debugGroupState,
-  getMessages, addMessage, chatAudienceIds, removeMember, leaveGroup, deleteUser, resetGroup,
+  getMessages, addMessage, chatAudienceIds, removeMember, leaveGroup, resetGroup,
   addFriend, listFriends, removeFriend,
   setOneOnOne, cancelOneOnOne, getOneOnOneStatus,
 };
